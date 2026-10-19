@@ -70,6 +70,26 @@ final class StickyBoardTests: XCTestCase {
         XCTAssertEqual(board.removing(UUID()), board)
     }
 
+    func test_ordering_putsNotesInTheGivenOrder() {
+        let board = StickyBoard.empty.adding("a", now: t0).adding("b", now: t0).adding("c", now: t0)
+        let ids = board.notes.map(\.id) // c, b, a
+
+        let next = board.ordering([ids[2], ids[0], ids[1]])
+
+        XCTAssertEqual(next.notes.map(\.text), ["a", "c", "b"])
+        XCTAssertEqual(board.notes.map(\.text), ["c", "b", "a"])
+    }
+
+    func test_ordering_keepsNotesAddedSinceTheDragAtTheTop_andIgnoresStrayIDs() {
+        let board = StickyBoard.empty.adding("a", now: t0).adding("b", now: t0)
+        let dragged = [board.notes[1].id, board.notes[0].id, UUID(), board.notes[1].id] // a, b, gone, dup
+        let withNew = board.adding("new", now: t0)
+
+        let next = withNew.ordering(dragged)
+
+        XCTAssertEqual(next.notes.map(\.text), ["new", "a", "b"])
+    }
+
     func test_visible_whenEverythingFits_showsAllNotes() {
         let board = (0..<4).reduce(StickyBoard.empty) { b, i in b.adding("n\(i)", now: t0) }
 

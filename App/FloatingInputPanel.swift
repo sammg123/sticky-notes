@@ -33,7 +33,7 @@ final class FloatingInputPanel: NSObject, NSWindowDelegate {
             onHeightChange: { [weak self] in self?.fitHeight($0) },
             content: content(close)
         )
-        let host = NSHostingView(rootView: root)
+        let host = FirstClickHostingView(rootView: root)
         // Measured before it joins the window, so the hidden titlebar's inset isn't counted.
         targetHeight = host.fittingSize.height
         // From here the panel follows the box's height itself (see `fitHeight`). Letting SwiftUI
@@ -100,7 +100,8 @@ final class FloatingInputPanel: NSObject, NSWindowDelegate {
         )
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
-        panel.isMovableByWindowBackground = true
+        // Off: a drag in the box reorders notes and must never pick up the whole box instead.
+        panel.isMovableByWindowBackground = false
         panel.level = .floating
         // Not hidesOnDeactivate: if activation is refused the box would never appear. Losing the
         // keyboard (a click elsewhere) still closes it, through windowDidResignKey.
@@ -123,6 +124,12 @@ final class FloatingInputPanel: NSObject, NSWindowDelegate {
         let top = visible.maxY - visible.height * Self.topOffsetFraction
         panel.setFrameTopLeftPoint(NSPoint(x: visible.midX - panel.frame.width / 2, y: top))
     }
+}
+
+/// Takes the first click even when the box isn't focused yet (say, macOS refused to bring the
+/// app forward), so a drag or a circle click works straight away instead of only focusing.
+private final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 /// Borderless-looking panels still have to opt in to taking the keyboard.

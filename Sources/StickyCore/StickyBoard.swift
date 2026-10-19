@@ -48,6 +48,17 @@ public struct StickyBoard: Codable, Equatable, Sendable {
         StickyBoard(notes: notes.filter { $0.id != id })
     }
 
+    /// Puts the notes in the order of `ids` (from a drag in the list). Notes missing from `ids`
+    /// were added since the list was shown, so they stay on top; unknown and repeated ids are skipped.
+    public func ordering(_ ids: [UUID]) -> StickyBoard {
+        var seen = Set<UUID>()
+        let wanted = ids.filter { seen.insert($0).inserted }
+        let byID = Dictionary(uniqueKeysWithValues: notes.map { ($0.id, $0) })
+        let placed = wanted.compactMap { byID[$0] }
+        let placedIDs = Set(placed.map(\.id))
+        return StickyBoard(notes: notes.filter { !placedIDs.contains($0.id) } + placed)
+    }
+
     /// What fits in `limit` rows: every note if they all fit, otherwise all but the last row,
     /// which then says how many notes did not fit.
     public func visible(limit: Int) -> (notes: [StickyNote], hiddenCount: Int) {
