@@ -20,8 +20,7 @@ final class FloatingInputPanel: NSObject, NSWindowDelegate {
     /// is already open. `content` gets the close action to call once its job is done.
     func show<Content: View>(@ViewBuilder content: (_ close: @escaping () -> Void) -> Content) {
         if let panel, panel.isVisible {
-            NSApp.activate(ignoringOtherApps: true)
-            panel.makeKeyAndOrderFront(nil)
+            present(panel)
             return
         }
         let front = NSWorkspace.shared.frontmostApplication
@@ -44,8 +43,21 @@ final class FloatingInputPanel: NSObject, NSWindowDelegate {
         panel.contentView = host
         panel.setContentSize(NSSize(width: Self.width, height: targetHeight))
         place(panel)
+        present(panel)
+    }
+
+    /// Shows the box and gives it the keyboard. Right after a cold launch macOS can ignore the
+    /// first request to bring the app forward, so it asks once more on the next turn; the box is
+    /// on screen either way, and clicking it takes the keyboard.
+    private func present(_ panel: NSPanel) {
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+        panel.orderFrontRegardless()
+        DispatchQueue.main.async {
+            guard panel.isVisible, !NSApp.isActive else { return }
+            NSApp.activate(ignoringOtherApps: true)
+            panel.makeKeyAndOrderFront(nil)
+        }
     }
 
     /// Resizes to the box's new height on the next run loop turn, outside any layout pass,
@@ -90,7 +102,9 @@ final class FloatingInputPanel: NSObject, NSWindowDelegate {
         panel.titlebarAppearsTransparent = true
         panel.isMovableByWindowBackground = true
         panel.level = .floating
-        panel.hidesOnDeactivate = true
+        // Not hidesOnDeactivate: if activation is refused the box would never appear. Losing the
+        // keyboard (a click elsewhere) still closes it, through windowDidResignKey.
+        panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         panel.delegate = self
