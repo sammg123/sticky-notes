@@ -2,7 +2,9 @@ import SwiftUI
 import StickyCore
 
 /// The notes under the text field in the box. Drag a row and the others slide out of its way;
-/// let go and it snaps into the nearest slot. The circle and x work as on the widget.
+/// let go and it snaps into the nearest slot. The circle and x work as on the widget, and the
+/// pencil turns a row into a text field: Return or a click elsewhere saves, Escape cancels, and
+/// starting another row's edit saves this one first.
 struct NoteListEditor: View {
     static let rowHeight: CGFloat = 28
     /// More than this and the list scrolls instead of growing the box. A drag only reaches the
@@ -14,8 +16,29 @@ struct NoteListEditor: View {
     let onToggle: (UUID) -> Void
     let onRemove: (UUID) -> Void
     let onReorder: ([UUID]) -> Void
+    let onEdit: (UUID, String) -> Void
 
     @State private var drag: DragState?
+    @State private var editingID: UUID?
+    /// The text in the row being edited; kept here so starting another edit can save it.
+    @State private var draft: String
+
+    init(
+        notes: [StickyNote],
+        editing: UUID? = nil,
+        onToggle: @escaping (UUID) -> Void,
+        onRemove: @escaping (UUID) -> Void,
+        onReorder: @escaping ([UUID]) -> Void,
+        onEdit: @escaping (UUID, String) -> Void
+    ) {
+        self.notes = notes
+        self.onToggle = onToggle
+        self.onRemove = onRemove
+        self.onReorder = onReorder
+        self.onEdit = onEdit
+        _editingID = State(initialValue: editing)
+        _draft = State(initialValue: notes.first { $0.id == editing }?.text ?? "")
+    }
 
     private struct DragState: Equatable {
         let id: UUID
@@ -36,16 +59,53 @@ struct NoteListEditor: View {
         VStack(spacing: 0) {
             ForEach(Array(notes.enumerated()), id: \.element.id) { index, note in
                 let isDragged = drag?.id == note.id
-                NoteEditRow(note: note, isLifted: isDragged, onToggle: onToggle, onRemove: onRemove)
-                    .offset(y: offset(of: index, isDragged: isDragged))
-                    .animation(isDragged ? nil : Self.snap, value: target)
-                    .zIndex(isDragged ? 1 : 0)
-                    .gesture(dragGesture(id: note.id, index: index))
+                let isEditing = editingID == note.id
+                NoteEditRow(
+                    note: note,
+                    isLifted: isDragged,
+                    isEditing: isEditing,
+                    draft: $draft,
+                    onToggle: onToggle,
+                    onRemove: onRemove,
+                    onStartEditing: { startEditing(note) },
+                    onSubmit: { submit(note.id) },
+                    onLeave: { save(note.id) },
+                    onCancel: { if editingID == note.id { editingID = nil } }
+                )
+                .offset(y: offset(of: index, isDragged: isDragged))
+                .animation(isDragged ? nil : Self.snap, value: target)
+                .zIndex(isDragged ? 1 : 0)
+                // A row being edited keeps the mouse for selecting text.
+                .gesture(dragGesture(id: note.id, index: index), including: isEditing ? .subviews : .all)
             }
         }
         .coordinateSpace(name: Self.space)
         // The notes changed under a drag (say, a cancelled one): drop the stale lift.
         .onChange(of: notes.map(\.id)) { drag = nil }
+    }
+
+    private func startEditing(_ note: StickyNote) {
+        if let current = editingID, current != note.id { save(current) }
+        draft = note.text
+        editingID = note.id
+    }
+
+    /// Return: save, or beep if the note was emptied (saving that would wipe it).
+    private func submit(_ id: UUID) {
+        guard editingID == id else { return }
+        guard !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            NSSound.beep()
+            return
+        }
+        save(id)
+    }
+
+    /// Leaving the row (another edit, a click elsewhere, the box closing): keep what was typed.
+    /// An emptied note is left as it was. Safe to call twice; only the open edit is saved.
+    private func save(_ id: UUID) {
+        guard editingID == id else { return }
+        editingID = nil
+        onEdit(id, draft)
     }
 
     private static let space = "noteList"
@@ -83,42 +143,68 @@ struct NoteListEditor: View {
     }
 }
 
-/// Circle, note, and (once crossed out) the x, plus a grip that says the row can be dragged.
+/// Circle, note, pencil, (once crossed out) the x, and a grip that says the row can be dragged.
+/// While editing, the note's text becomes a field.
 private struct NoteEditRow: View {
     let note: StickyNote
     let isLifted: Bool
+    let isEditing: Bool
+    @Binding var draft: String
     let onToggle: (UUID) -> Void
     let onRemove: (UUID) -> Void
+    let onStartEditing: () -> Void
+    let onSubmit: () -> Void
+    let onLeave: () -> Void
+    let onCancel: () -> Void
+
+    @FocusState private var isFieldFocused: Bool
+
+    private static let focusAttempts = 10
+    private static let focusRetry: UInt64 = 50_000_000
 
     var body: some View {
         HStack(spacing: 8) {
-            Button { onToggle(note.id) } label: {
-                Image(systemName: note.isCrossedOut ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 20, height: 20)
-                    .contentShape(Rectangle())
+            iconButton(note.isCrossedOut ? "checkmark.circle.fill" : "circle", size: 14, weight: .regular,
+                       label: note.isCrossedOut ? "Bring back \(note.text)" : "Cross out \(note.text)") { onToggle(note.id) }
+
+            if isEditing {
+                TextField("Note", text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .focused($isFieldFocused)
+                    .onSubmit(onSubmit)
+                    .onExitCommand(perform: onCancel)
+                    // Only while it really has the keyboard does Escape cancel this edit instead
+                    // of closing the box; a field that never got focus leaves Escape to the box.
+                    .preference(key: ContentHandlesEscape.self, value: isFieldFocused)
+                    // Focus moving elsewhere in the box (or the box closing) saves the edit.
+                    .onChange(of: isFieldFocused) { wasFocused, isFocused in
+                        if wasFocused && !isFocused { onLeave() }
+                    }
+                    .task {
+                        // Asked again until it takes: a box that just opened, or another row's
+                        // field still letting go, can drop the first request.
+                        for _ in 0..<Self.focusAttempts {
+                            isFieldFocused = true
+                            do { try await Task.sleep(nanoseconds: Self.focusRetry) } catch { return }
+                            if isFieldFocused { return }
+                        }
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background(RoundedRectangle(cornerRadius: 5).strokeBorder(.tertiary))
+            } else {
+                Text(note.text)
+                    .font(.system(size: 13))
+                    .strikethrough(note.isCrossedOut)
+                    .foregroundStyle(note.isCrossedOut ? .secondary : .primary)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                iconButton("pencil", size: 12, weight: .medium, label: "Edit \(note.text)", action: onStartEditing)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(note.isCrossedOut ? "Bring back \(note.text)" : "Cross out \(note.text)")
 
-            Text(note.text)
-                .font(.system(size: 13))
-                .strikethrough(note.isCrossedOut)
-                .foregroundStyle(note.isCrossedOut ? .secondary : .primary)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            if note.isCrossedOut {
-                Button { onRemove(note.id) } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .heavy))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 20, height: 20)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Delete \(note.text)")
+            if note.isCrossedOut && !isEditing {
+                iconButton("xmark", size: 10, weight: .heavy, label: "Delete \(note.text)") { onRemove(note.id) }
             }
 
             Image(systemName: "line.3.horizontal")
@@ -136,5 +222,17 @@ private struct NoteEditRow: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .contain)
         .accessibilityHint("Drag to reorder")
+    }
+
+    private func iconButton(_ symbol: String, size: CGFloat, weight: Font.Weight, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: size, weight: weight))
+                .foregroundStyle(.secondary)
+                .frame(width: 20, height: 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 }

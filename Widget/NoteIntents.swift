@@ -1,4 +1,5 @@
 import AppIntents
+import AppKit
 import WidgetKit
 import StickyCore
 
@@ -43,7 +44,34 @@ struct RemoveNoteIntent: AppIntent {
     }
 }
 
-/// Shared by both buttons: validate the id, change the file, redraw the widget.
+/// A note's text on the small widget, which can't hold links: opens the same edit link the
+/// larger sizes use, from the widget's own process.
+struct EditNoteIntent: AppIntent {
+    static let title: LocalizedStringResource = "Edit Sticky Note"
+    static let isDiscoverable = false
+
+    @Parameter(title: "Note")
+    var noteID: String
+
+    @Parameter(title: "Line")
+    var row: Int
+
+    init() {}
+
+    init(id: UUID, row: Int) {
+        noteID = id.uuidString
+        self.row = row
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        guard let id = UUID(uuidString: noteID) else { throw NoteChangeError.invalidID(noteID) }
+        guard NSWorkspace.shared.open(StickyLink.edit(id, row: row).url) else { throw NoteChangeError.couldNotOpenEditor }
+        return .result()
+    }
+}
+
+/// Shared by the circle and the x: validate the id, change the file, redraw the widget.
 enum NoteChange {
     static func apply(to noteID: String, _ change: (StickyBoard, UUID) -> StickyBoard) throws {
         guard let id = UUID(uuidString: noteID) else { throw NoteChangeError.invalidID(noteID) }
@@ -60,11 +88,13 @@ enum NoteChange {
 enum NoteChangeError: Error, CustomLocalizedStringResourceConvertible {
     case invalidID(String)
     case storage(String)
+    case couldNotOpenEditor
 
     var localizedStringResource: LocalizedStringResource {
         switch self {
         case .invalidID(let id): return "No sticky note with id \(id)."
         case .storage(let message): return "Couldn't update your notes: \(message)"
+        case .couldNotOpenEditor: return "Couldn't open Sticky Notes to edit the note."
         }
     }
 }

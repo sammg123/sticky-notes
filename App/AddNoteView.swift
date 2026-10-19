@@ -3,19 +3,22 @@ import WidgetKit
 import StickyCore
 
 /// The box the widget opens: a text field to add a note (Return saves and closes) and, under it,
-/// every note, which can be crossed out, deleted, or dragged into a new order.
+/// every note, which can be crossed out, edited, deleted, or dragged into a new order.
 struct AddNoteView: View {
     /// Long enough for the panel to become key before the field asks for focus.
     private static let focusDelay: UInt64 = 350_000_000
 
     let onClose: () -> Void
+    /// A note to open in edit mode (when the widget's edit field couldn't be placed).
+    let editingID: UUID?
     @State private var text = ""
     @State private var board: StickyBoard
     @State private var errorText: String?
     @FocusState private var isFocused: Bool
 
-    init(onClose: @escaping () -> Void) {
+    init(onClose: @escaping () -> Void, editing editingID: UUID? = nil) {
         self.onClose = onClose
+        self.editingID = editingID
         do {
             _board = State(initialValue: try StickyStore().load())
             _errorText = State(initialValue: nil)
@@ -46,13 +49,17 @@ struct AddNoteView: View {
             if !board.notes.isEmpty {
                 NoteListEditor(
                     notes: board.notes,
+                    editing: editingID,
                     onToggle: { id in change { $0.toggling(id) } },
                     onRemove: { id in change { $0.removing(id) } },
-                    onReorder: { ids in change { $0.ordering(ids) } }
+                    onReorder: { ids in change { $0.ordering(ids) } },
+                    onEdit: { id, text in change { $0.editing(id, text: text) } }
                 )
             }
         }
         .task {
+            // Opened to edit a note: that row's field takes the keyboard instead.
+            guard editingID == nil else { return }
             try? await Task.sleep(nanoseconds: Self.focusDelay)
             isFocused = true
         }

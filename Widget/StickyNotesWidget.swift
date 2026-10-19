@@ -13,8 +13,10 @@ struct StickyNotesWidget: Widget {
                 .containerBackground(for: .widget) { StickyPalette.paper }
         }
         .configurationDisplayName("Notes")
-        .description("Click to add a note. Click a note's circle to cross it out or bring it back.")
+        .description("Click to add a note. Click a note's circle to cross it out, its text to edit it.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        // The view pads itself by WidgetLayout.padding, so the app knows exactly where each line is.
+        .contentMarginsDisabled()
     }
 }
 
@@ -65,12 +67,3 @@ struct NotesProvider: TimelineProvider {
     }
 }
 
-extension WidgetFamily {
-    /// Notes that fit one per line under the header.
-    var noteLimit: Int {
-        switch self {
-        case .systemLarge, .systemExtraLarge: return 11
-        default: return 4
-        }
-    }
-}

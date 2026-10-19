@@ -1,12 +1,14 @@
 import AppKit
 import StickyCore
 
-/// A background app (no Dock icon, no windows) whose only job is the add-a-note box the
-/// widget's `stickynotes://add` link opens. Opening the app directly shows the box too.
+/// A background app (no Dock icon, no windows) that shows what the widget can't: the box its
+/// `stickynotes://add` link opens, and the edit field `stickynotes://edit/<id>` lays over a note's line.
+/// Opening the app directly shows the box too.
 @main
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let addPanel = FloatingInputPanel()
+    private let inlineEditor = InlineNoteEditor()
 
     static func main() {
         let app = NSApplication.shared
@@ -50,6 +52,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch link {
         case .add:
             showAddBox()
+        case .edit(let id, let row):
+            // Over the note's line on the widget; if that can't be found, edit it in the box.
+            if !inlineEditor.show(noteID: id, row: row) {
+                addPanel.show { close in AddNoteView(onClose: close, editing: id) }
+            }
         }
     }
 

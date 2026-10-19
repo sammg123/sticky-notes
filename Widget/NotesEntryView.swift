@@ -14,41 +14,55 @@ struct NotesEntryView: View {
     @Environment(\.widgetFamily) private var family
 
     var body: some View {
-        NotesListView(entry: entry, limit: family.noteLimit)
+        // Rows from the widget's real height (it varies by display), the same measurement the
+        // app makes when it places an edit field. Small widgets can't hold links, so there a
+        // note's text is a button that opens the link.
+        GeometryReader { geometry in
+            NotesListView(
+                entry: entry,
+                limit: WidgetLayout.rowLimit(contentHeight: geometry.size.height),
+                editsViaIntent: family == .systemSmall
+            )
+        }
     }
 }
 
-/// Header with a +, then one note per line. The whole widget opens the add box; each note's
-/// circle is its own button.
+/// Header with a +, then one note per line. The whole widget opens the box; a note's circle and
+/// x are buttons, and its text opens an edit field right over that line. Every size and gap comes
+/// from `WidgetLayout`, which the app uses to place that field.
 struct NotesListView: View {
     let entry: NotesEntry
     let limit: Int
+    let editsViaIntent: Bool
     @Environment(\.widgetRenderingMode) private var renderingMode
 
     private var ink: Color { renderingMode == .fullColor ? StickyPalette.ink : .primary }
 
     var body: some View {
         let visible = entry.board.visible(limit: limit)
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: WidgetLayout.headerSpacing) {
             header
             if let error = entry.loadError {
                 message("Can't read your notes", detail: error)
             } else if visible.notes.isEmpty {
                 message("No notes", detail: "Click anywhere to add one")
             } else {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(visible.notes) { NoteRow(note: $0, ink: ink) }
+                VStack(alignment: .leading, spacing: WidgetLayout.rowSpacing) {
+                    ForEach(Array(visible.notes.enumerated()), id: \.element.id) { row, note in
+                        NoteRow(note: note, row: row, ink: ink, editsViaIntent: editsViaIntent)
+                    }
                     if visible.hiddenCount > 0 {
                         Text("\(visible.hiddenCount) more")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(ink.opacity(0.55))
-                            .padding(.leading, NoteRow.textInset)
-                            .frame(height: NoteRow.height)
+                            .padding(.leading, WidgetLayout.textInset)
+                            .frame(height: WidgetLayout.rowHeight)
                     }
                 }
             }
             Spacer(minLength: 0)
         }
+        .padding(WidgetLayout.padding)
         .widgetURL(StickyLink.add.url)
     }
 
@@ -62,10 +76,11 @@ struct NotesListView: View {
             Image(systemName: "plus")
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(ink)
-                .frame(width: 22, height: 22)
+                .frame(width: WidgetLayout.headerHeight, height: WidgetLayout.headerHeight)
                 .background(Circle().fill(ink.opacity(renderingMode == .fullColor ? 0.12 : 0.2)))
                 .accessibilityLabel("Add a note")
         }
+        .frame(height: WidgetLayout.headerHeight)
     }
 
     private func message(_ title: String, detail: String) -> some View {
@@ -82,49 +97,62 @@ struct NotesListView: View {
 }
 
 /// Circle, then the note. The circle crosses a note out and back; a crossed-out note also gets
-/// an x at the end that deletes it.
+/// an x at the end that deletes it. Clicking the text edits it in place.
 private struct NoteRow: View {
-    static let height: CGFloat = 20
-    private static let circleSize: CGFloat = 18
-    private static let gap: CGFloat = 8
-    private static let deleteWidth: CGFloat = 20
-    /// Where the note text starts, so the "N more" row lines up with it.
-    static let textInset = circleSize + gap
-
     let note: StickyNote
+    /// The line it's drawn on, sent with the edit link so the field lands where the user clicked.
+    let row: Int
     let ink: Color
+    let editsViaIntent: Bool
 
     var body: some View {
-        HStack(spacing: Self.gap) {
+        HStack(spacing: WidgetLayout.gap) {
             Button(intent: ToggleNoteIntent(id: note.id)) {
                 Image(systemName: note.isCrossedOut ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 14))
                     .foregroundStyle(ink.opacity(0.55))
-                    .frame(width: Self.circleSize, height: Self.circleSize)
+                    .frame(width: WidgetLayout.circleSize, height: WidgetLayout.circleSize)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(note.isCrossedOut ? "Bring back \(note.text)" : "Cross out \(note.text)")
 
-            Text(note.text)
-                .font(.system(size: 13))
-                .strikethrough(note.isCrossedOut)
-                .foregroundStyle(note.isCrossedOut ? ink.opacity(0.4) : ink)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            editTarget
 
             if note.isCrossedOut {
                 Button(intent: RemoveNoteIntent(id: note.id)) {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .heavy))
                         .foregroundStyle(ink.opacity(0.6))
-                        .frame(width: Self.deleteWidth, height: Self.height)
+                        .frame(width: WidgetLayout.deleteWidth, height: WidgetLayout.rowHeight)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Delete \(note.text)")
             }
         }
-        .frame(height: Self.height)
+        .frame(height: WidgetLayout.rowHeight)
+    }
+
+    @ViewBuilder
+    private var editTarget: some View {
+        if editsViaIntent {
+            Button(intent: EditNoteIntent(id: note.id, row: row)) { noteText }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Edit \(note.text)")
+        } else {
+            Link(destination: StickyLink.edit(note.id, row: row).url) { noteText }
+                .accessibilityLabel("Edit \(note.text)")
+        }
+    }
+
+    private var noteText: some View {
+        Text(note.text)
+            .font(.system(size: 13))
+            .strikethrough(note.isCrossedOut)
+            .foregroundStyle(note.isCrossedOut ? ink.opacity(0.4) : ink)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
     }
 }

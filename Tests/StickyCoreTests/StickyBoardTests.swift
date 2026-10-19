@@ -90,6 +90,28 @@ final class StickyBoardTests: XCTestCase {
         XCTAssertEqual(next.notes.map(\.text), ["new", "a", "b"])
     }
 
+    func test_editing_replacesTheText_andKeepsEverythingElse() {
+        let board = StickyBoard.empty.adding("a", now: t0).adding("b", now: t0)
+        let target = board.toggling(board.notes[1].id)
+
+        let next = target.editing(target.notes[1].id, text: "  a, but better \n")
+
+        XCTAssertEqual(next.notes.map(\.text), ["b", "a, but better"])
+        XCTAssertEqual(next.notes[1].id, target.notes[1].id)
+        XCTAssertTrue(next.notes[1].isCrossedOut)
+        XCTAssertEqual(next.notes[1].createdAt, t0)
+        XCTAssertEqual(target.notes[1].text, "a")
+    }
+
+    func test_editing_toBlankOrAnUnknownID_changesNothing_andCapsLength() {
+        let board = StickyBoard.empty.adding("a", now: t0)
+        let id = board.notes[0].id
+
+        XCTAssertEqual(board.editing(id, text: "   "), board)
+        XCTAssertEqual(board.editing(UUID(), text: "x"), board)
+        XCTAssertEqual(board.editing(id, text: String(repeating: "z", count: 500)).notes[0].text.count, StickyBoard.maxTextLength)
+    }
+
     func test_visible_whenEverythingFits_showsAllNotes() {
         let board = (0..<4).reduce(StickyBoard.empty) { b, i in b.adding("n\(i)", now: t0) }
 

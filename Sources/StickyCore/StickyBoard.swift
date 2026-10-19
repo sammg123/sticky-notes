@@ -43,6 +43,18 @@ public struct StickyBoard: Codable, Equatable, Sendable {
         })
     }
 
+    /// Replaces the note's text (trimmed and capped), keeping its place and crossed-out state.
+    /// Blank text changes nothing, so an emptied field can't wipe a note.
+    public func editing(_ id: UUID, text: String) -> StickyBoard {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return self }
+        let capped = String(trimmed.prefix(Self.maxTextLength))
+        return StickyBoard(notes: notes.map { note in
+            guard note.id == id else { return note }
+            return StickyNote(id: note.id, text: capped, isCrossedOut: note.isCrossedOut, createdAt: note.createdAt)
+        })
+    }
+
     /// Deletes the note.
     public func removing(_ id: UUID) -> StickyBoard {
         StickyBoard(notes: notes.filter { $0.id != id })

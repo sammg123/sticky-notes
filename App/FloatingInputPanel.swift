@@ -87,6 +87,8 @@ final class FloatingInputPanel: NSObject, NSWindowDelegate {
 
     /// Clicking elsewhere already moved focus, so only hide.
     func windowDidResignKey(_ notification: Notification) {
+        // Ends any edit in progress first, so a note being edited in the box is saved.
+        panel?.makeFirstResponder(nil)
         panel?.orderOut(nil)
         previousApp = nil
     }
@@ -143,8 +145,13 @@ private struct PanelChrome<Content: View>: View {
     let onHeightChange: (CGFloat) -> Void
     let content: Content
 
+    /// Content that's in the middle of something Escape should cancel first (say, a row being
+    /// edited) turns the box's own Escape off meanwhile.
+    @State private var contentHandlesEscape = false
+
     var body: some View {
         content
+            .onPreferenceChange(ContentHandlesEscape.self) { contentHandlesEscape = $0 }
             .padding(.horizontal, 16)
             .padding(.top, 14)
             .padding(.bottom, 16)
@@ -161,8 +168,18 @@ private struct PanelChrome<Content: View>: View {
     private var escapeButton: some View {
         Button("", action: onClose)
             .keyboardShortcut(.escape, modifiers: [])
+            .disabled(contentHandlesEscape)
             .opacity(0)
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
+    }
+}
+
+/// True while the box content wants Escape for itself (see `PanelChrome`).
+struct ContentHandlesEscape: PreferenceKey {
+    static let defaultValue = false
+
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
     }
 }
