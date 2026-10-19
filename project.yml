@@ -1,0 +1,92 @@
+# Built by build.sh (XcodeGen + xcodebuild). The widget is a WidgetKit app extension and its
+# circle buttons need Xcode's App Intents metadata step, so this cannot be a plain SwiftPM build.
+name: StickyNotes
+options:
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_HARDENED_RUNTIME: NO
+    # Release builds should not carry the debugger entitlement Xcode adds by default.
+    CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+targets:
+  # The same sources `swift test` covers, compiled once for both the app and the widget.
+  StickyCore:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: Sources/StickyCore
+    settings:
+      base:
+        PRODUCT_MODULE_NAME: StickyCore
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+  StickyNotesApp:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+        excludes:
+          - Resources
+      - path: App/Resources/AppIcon.icns
+        buildPhase: resources
+    dependencies:
+      - target: StickyCore
+      - target: StickyNotesWidget
+      - sdk: WidgetKit.framework
+    info:
+      path: Generated/App-Info.plist
+      properties:
+        CFBundleName: Sticky Notes
+        CFBundleDisplayName: Sticky Notes
+        CFBundleIconFile: AppIcon
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: "14.0"
+        # Background only: no Dock icon, no menu bar. It exists to show the add box.
+        LSUIElement: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.stickynotes.app
+            CFBundleURLSchemes: [stickynotes]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.stickynotes.app
+        PRODUCT_NAME: Sticky Notes
+  StickyNotesWidget:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Widget
+    dependencies:
+      - target: StickyCore
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+      - sdk: AppIntents.framework
+    info:
+      path: Generated/Widget-Info.plist
+      properties:
+        CFBundleDisplayName: Sticky Notes
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: "14.0"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Generated/StickyNotesWidget.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        # Widgets must be sandboxed; this lets the widget read and update the same notes.json
+        # the (unsandboxed) app writes.
+        com.apple.security.temporary-exception.files.home-relative-path.read-write:
+          - /Library/Application Support/Sticky Notes/
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.stickynotes.app.widget
+        PRODUCT_NAME: StickyNotesWidget
+        APPLICATION_EXTENSION_API_ONLY: YES
