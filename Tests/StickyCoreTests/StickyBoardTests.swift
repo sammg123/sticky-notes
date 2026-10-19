@@ -34,30 +34,40 @@ final class StickyBoardTests: XCTestCase {
         XCTAssertEqual(board.notes[0].text.count, StickyBoard.maxTextLength)
     }
 
-    func test_pressingOnce_crossesTheNoteOut_inPlace() {
+    func test_toggling_crossesTheNoteOut_inPlace() {
         let board = StickyBoard.empty.adding("a", now: t0).adding("b", now: t0)
         let target = board.notes[1]
 
-        let next = board.pressing(target.id)
+        let next = board.toggling(target.id)
 
         XCTAssertEqual(next.notes.map(\.text), ["b", "a"])
         XCTAssertEqual(next.notes.map(\.isCrossedOut), [false, true])
         XCTAssertFalse(board.notes[1].isCrossedOut)
     }
 
-    func test_pressingACrossedOutNote_deletesIt() {
+    func test_togglingACrossedOutNote_uncrossesIt_andKeepsIt() {
         let board = StickyBoard.empty.adding("a", now: t0).adding("b", now: t0)
         let target = board.notes[0]
 
-        let next = board.pressing(target.id).pressing(target.id)
+        let next = board.toggling(target.id).toggling(target.id)
+
+        XCTAssertEqual(next, board)
+    }
+
+    func test_removing_deletesOnlyThatNote() {
+        let board = StickyBoard.empty.adding("a", now: t0).adding("b", now: t0)
+        let target = board.notes[0]
+
+        let next = board.toggling(target.id).removing(target.id)
 
         XCTAssertEqual(next.notes.map(\.text), ["a"])
     }
 
-    func test_pressingAnUnknownID_changesNothing() {
+    func test_anUnknownID_changesNothing() {
         let board = StickyBoard.empty.adding("a", now: t0)
 
-        XCTAssertEqual(board.pressing(UUID()), board)
+        XCTAssertEqual(board.toggling(UUID()), board)
+        XCTAssertEqual(board.removing(UUID()), board)
     }
 
     func test_visible_whenEverythingFits_showsAllNotes() {

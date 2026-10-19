@@ -12,8 +12,8 @@ struct StickyNotesWidget: Widget {
             NotesEntryView(entry: entry)
                 .containerBackground(for: .widget) { StickyPalette.paper }
         }
-        .configurationDisplayName("Sticky Notes")
-        .description("Click to add a note. Click a note's circle to cross it out, again to remove it.")
+        .configurationDisplayName("Notes")
+        .description("Click to add a note. Click a note's circle to cross it out or bring it back.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
@@ -30,7 +30,7 @@ struct NotesEntry: TimelineEntry {
             .adding("Call the dentist", now: date)
             .adding("Pick up dry cleaning", now: date)
             .adding("Email Prof. Lee", now: date)
-        return NotesEntry(date: date, board: board.pressing(board.notes[2].id), loadError: nil)
+        return NotesEntry(date: date, board: board.toggling(board.notes[2].id), loadError: nil)
     }
 }
 

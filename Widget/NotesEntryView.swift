@@ -54,7 +54,7 @@ struct NotesListView: View {
 
     private var header: some View {
         HStack(spacing: 6) {
-            Text("Sticky Notes")
+            Text("Notes")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(ink)
                 .lineLimit(1)
@@ -81,11 +81,13 @@ struct NotesListView: View {
     }
 }
 
-/// Circle, then the note. Crossed-out notes show an x: the next click removes them.
+/// Circle, then the note. The circle crosses a note out and back; a crossed-out note also gets
+/// an x at the end that deletes it.
 private struct NoteRow: View {
     static let height: CGFloat = 20
     private static let circleSize: CGFloat = 18
     private static let gap: CGFloat = 8
+    private static let deleteWidth: CGFloat = 20
     /// Where the note text starts, so the "N more" row lines up with it.
     static let textInset = circleSize + gap
 
@@ -94,21 +96,34 @@ private struct NoteRow: View {
 
     var body: some View {
         HStack(spacing: Self.gap) {
-            Button(intent: PressNoteIntent(id: note.id)) {
-                Image(systemName: note.isCrossedOut ? "xmark.circle.fill" : "circle")
+            Button(intent: ToggleNoteIntent(id: note.id)) {
+                Image(systemName: note.isCrossedOut ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 14))
                     .foregroundStyle(ink.opacity(0.55))
                     .frame(width: Self.circleSize, height: Self.circleSize)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(note.isCrossedOut ? "Remove \(note.text)" : "Cross out \(note.text)")
+            .accessibilityLabel(note.isCrossedOut ? "Bring back \(note.text)" : "Cross out \(note.text)")
 
             Text(note.text)
                 .font(.system(size: 13))
                 .strikethrough(note.isCrossedOut)
                 .foregroundStyle(note.isCrossedOut ? ink.opacity(0.4) : ink)
                 .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if note.isCrossedOut {
+                Button(intent: RemoveNoteIntent(id: note.id)) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundStyle(ink.opacity(0.6))
+                        .frame(width: Self.deleteWidth, height: Self.height)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Delete \(note.text)")
+            }
         }
         .frame(height: Self.height)
     }

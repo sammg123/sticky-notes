@@ -1,6 +1,7 @@
 import Foundation
 
-/// One line on the widget. Its button crosses it out; pressing again removes it.
+/// One line on the widget. Its circle crosses it out and back; a crossed-out note also gets a
+/// button that removes it.
 public struct StickyNote: Codable, Identifiable, Equatable, Sendable {
     public let id: UUID
     public let text: String
@@ -34,14 +35,17 @@ public struct StickyBoard: Codable, Equatable, Sendable {
         return StickyBoard(notes: [note] + notes)
     }
 
-    /// The note's button: an open note gets crossed out, a crossed-out note goes away.
-    public func pressing(_ id: UUID) -> StickyBoard {
-        guard let note = notes.first(where: { $0.id == id }) else { return self }
-        if note.isCrossedOut {
-            return StickyBoard(notes: notes.filter { $0.id != id })
-        }
-        let crossed = StickyNote(id: note.id, text: note.text, isCrossedOut: true, createdAt: note.createdAt)
-        return StickyBoard(notes: notes.map { $0.id == id ? crossed : $0 })
+    /// The note's circle: crosses an open note out, and brings a crossed-out note back.
+    public func toggling(_ id: UUID) -> StickyBoard {
+        StickyBoard(notes: notes.map { note in
+            guard note.id == id else { return note }
+            return StickyNote(id: note.id, text: note.text, isCrossedOut: !note.isCrossedOut, createdAt: note.createdAt)
+        })
+    }
+
+    /// Deletes the note.
+    public func removing(_ id: UUID) -> StickyBoard {
+        StickyBoard(notes: notes.filter { $0.id != id })
     }
 
     /// What fits in `limit` rows: every note if they all fit, otherwise all but the last row,

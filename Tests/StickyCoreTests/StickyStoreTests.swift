@@ -23,7 +23,7 @@ final class StickyStoreTests: XCTestCase {
 
     func test_saveThenLoad_roundTrips() throws {
         let board = StickyBoard.empty.adding("a", now: t0).adding("b", now: t0)
-        let crossed = board.pressing(board.notes[0].id)
+        let crossed = board.toggling(board.notes[0].id)
 
         try store.save(crossed)
 
