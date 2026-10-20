@@ -66,7 +66,7 @@ struct EditNoteIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         guard let id = UUID(uuidString: noteID) else { throw NoteChangeError.invalidID(noteID) }
-        guard NSWorkspace.shared.open(StickyLink.edit(id, row: row).url) else { throw NoteChangeError.couldNotOpenEditor }
+        guard NSWorkspace.shared.open(StickyLink.edit(id, row: row).widgetURL) else { throw NoteChangeError.couldNotOpenEditor }
         return .result()
     }
 }

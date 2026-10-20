@@ -10,8 +10,22 @@ public enum StickyLink: Equatable, Sendable {
     case edit(UUID, row: Int?)
 
     public static let scheme = "stickynotes"
+    /// Added to every link the widget opens, so the app knows the click was on the widget (and
+    /// so the widget is under the pointer). Any app can open a `stickynotes://` link.
+    private static let widgetSource = URLQueryItem(name: "from", value: "widget")
 
-    public var url: URL {
+    public var url: URL { components(markedFromWidget: false) }
+
+    /// The link as the widget opens it.
+    public var widgetURL: URL { components(markedFromWidget: true) }
+
+    /// True for a link the widget opened (see `widgetURL`).
+    public static func cameFromWidget(_ url: URL) -> Bool {
+        url.scheme?.lowercased() == scheme
+            && URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.contains(widgetSource) == true
+    }
+
+    private func components(markedFromWidget: Bool) -> URL {
         var parts = URLComponents()
         parts.scheme = Self.scheme
         switch self {
@@ -22,6 +36,7 @@ public enum StickyLink: Equatable, Sendable {
             parts.path = "/" + id.uuidString
             parts.queryItems = row.map { [URLQueryItem(name: "row", value: String($0))] }
         }
+        if markedFromWidget { parts.queryItems = (parts.queryItems ?? []) + [Self.widgetSource] }
         guard let url = parts.url else { preconditionFailure("StickyLink \(self) is not a valid URL") }
         return url
     }

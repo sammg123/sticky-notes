@@ -71,6 +71,13 @@ public struct StickyBoard: Codable, Equatable, Sendable {
         return StickyBoard(notes: notes.filter { !placedIDs.contains($0.id) } + placed)
     }
 
+    /// Moves the note to place `index` (kept inside the list), as a drag on the widget does.
+    /// An unknown id changes nothing.
+    public func moving(_ id: UUID, to index: Int) -> StickyBoard {
+        guard let from = notes.firstIndex(where: { $0.id == id }) else { return self }
+        return StickyBoard(notes: RowReorder.moved(notes, from: from, to: min(max(index, 0), notes.count - 1)))
+    }
+
     /// What fits in `limit` rows: every note if they all fit, otherwise all but the last row,
     /// which then says how many notes did not fit.
     public func visible(limit: Int) -> (notes: [StickyNote], hiddenCount: Int) {

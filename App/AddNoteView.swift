@@ -30,9 +30,13 @@ struct AddNoteView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Notes", systemImage: "note.text")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
+            HStack {
+                Label("Notes", systemImage: "note.text")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                CloseButton(action: onClose)
+            }
             TextField("Add a note, then press Return", text: $text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
@@ -84,5 +88,26 @@ struct AddNoteView: View {
             errorText = "Couldn't save: \(error.localizedDescription)"
             return false
         }
+    }
+}
+
+/// The round x in the box's corner. Closes the box like Escape, keeping a note being edited.
+private struct CloseButton: View {
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(isHovered ? .primary : .secondary)
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(.quaternary.opacity(isHovered ? 1 : 0.6)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .help("Close")
+        .accessibilityLabel("Close")
     }
 }

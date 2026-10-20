@@ -52,7 +52,14 @@ struct NotesProvider: TimelineProvider {
     /// refresh only catches a reload that got lost (say, while the widget service restarted).
     func getTimeline(in context: Context, completion: @escaping (Timeline<NotesEntry>) -> Void) {
         let now = Date()
-        completion(Timeline(entries: [load(at: now)], policy: .after(now.addingTimeInterval(Self.safetyRefresh))))
+        let entry = load(at: now)
+        // Tells the app (holding its drag preview over the widget) that this redraw has started.
+        do {
+            try StickyStore().markWidgetDrawn(at: now)
+        } catch {
+            Self.log.error("Could not mark the redraw: \(error.localizedDescription, privacy: .public)")
+        }
+        completion(Timeline(entries: [entry], policy: .after(now.addingTimeInterval(Self.safetyRefresh))))
     }
 
     private static let safetyRefresh: TimeInterval = 60 * 60

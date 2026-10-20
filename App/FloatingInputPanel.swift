@@ -78,8 +78,10 @@ final class FloatingInputPanel: NSObject, NSWindowDelegate {
         panel.setFrame(frame, display: true)
     }
 
-    /// Escape or a finished entry: close and hand the keyboard back to where the user was.
+    /// Escape, the close button, or a finished entry: close and hand the keyboard back to where
+    /// the user was. A note being edited in the list is saved first, as a click elsewhere does.
     private func dismiss() {
+        panel?.makeFirstResponder(nil)
         panel?.orderOut(nil)
         previousApp?.activate()
         previousApp = nil

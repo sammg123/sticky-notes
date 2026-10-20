@@ -2,13 +2,6 @@ import SwiftUI
 import WidgetKit
 import StickyCore
 
-/// Paper and ink for full color. When macOS dims widgets to gray, the system drops the paper
-/// and everything draws in `.primary` instead, which stays legible there.
-enum StickyPalette {
-    static let paper = Color(red: 1.0, green: 0.925, blue: 0.6)
-    static let ink = Color(red: 0.25, green: 0.2, blue: 0.06)
-}
-
 struct NotesEntryView: View {
     let entry: NotesEntry
     @Environment(\.widgetFamily) private var family
@@ -63,7 +56,7 @@ struct NotesListView: View {
             Spacer(minLength: 0)
         }
         .padding(WidgetLayout.padding)
-        .widgetURL(StickyLink.add.url)
+        .widgetURL(StickyLink.add.widgetURL)
     }
 
     private var header: some View {
@@ -97,7 +90,8 @@ struct NotesListView: View {
 }
 
 /// Circle, then the note. The circle crosses a note out and back; a crossed-out note also gets
-/// an x at the end that deletes it. Clicking the text edits it in place.
+/// an x at the end that deletes it. Clicking the text edits it in place. (While the app is
+/// running it catches presses on the text itself, so it can tell a click from a drag.)
 private struct NoteRow: View {
     let note: StickyNote
     /// The line it's drawn on, sent with the edit link so the field lands where the user clicked.
@@ -107,28 +101,16 @@ private struct NoteRow: View {
 
     var body: some View {
         HStack(spacing: WidgetLayout.gap) {
-            Button(intent: ToggleNoteIntent(id: note.id)) {
-                Image(systemName: note.isCrossedOut ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 14))
-                    .foregroundStyle(ink.opacity(0.55))
-                    .frame(width: WidgetLayout.circleSize, height: WidgetLayout.circleSize)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(note.isCrossedOut ? "Bring back \(note.text)" : "Cross out \(note.text)")
+            Button(intent: ToggleNoteIntent(id: note.id)) { NoteCircleMark(note: note, ink: ink) }
+                .buttonStyle(.plain)
+                .accessibilityLabel(note.isCrossedOut ? "Bring back \(note.text)" : "Cross out \(note.text)")
 
             editTarget
 
             if note.isCrossedOut {
-                Button(intent: RemoveNoteIntent(id: note.id)) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .heavy))
-                        .foregroundStyle(ink.opacity(0.6))
-                        .frame(width: WidgetLayout.deleteWidth, height: WidgetLayout.rowHeight)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Delete \(note.text)")
+                Button(intent: RemoveNoteIntent(id: note.id)) { NoteDeleteMark(ink: ink) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Delete \(note.text)")
             }
         }
         .frame(height: WidgetLayout.rowHeight)
@@ -141,18 +123,10 @@ private struct NoteRow: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Edit \(note.text)")
         } else {
-            Link(destination: StickyLink.edit(note.id, row: row).url) { noteText }
+            Link(destination: StickyLink.edit(note.id, row: row).widgetURL) { noteText }
                 .accessibilityLabel("Edit \(note.text)")
         }
     }
 
-    private var noteText: some View {
-        Text(note.text)
-            .font(.system(size: 13))
-            .strikethrough(note.isCrossedOut)
-            .foregroundStyle(note.isCrossedOut ? ink.opacity(0.4) : ink)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-    }
+    private var noteText: some View { NoteTextLabel(note: note, ink: ink) }
 }

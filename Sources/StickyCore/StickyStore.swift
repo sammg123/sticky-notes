@@ -66,6 +66,24 @@ public struct StickyStore: Sendable {
         return next
     }
 
+    /// Touched by the widget each time it reads the notes to redraw. After a drag the app waits
+    /// for it, so the rows it draws over the widget don't fade before the widget shows the new order.
+    public var widgetDrawnURL: URL { url.deletingLastPathComponent().appendingPathComponent("widget-drawn") }
+
+    public func markWidgetDrawn(at date: Date = Date()) throws {
+        let fileManager = FileManager.default
+        if !fileManager.fileExists(atPath: widgetDrawnURL.path) {
+            try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data().write(to: widgetDrawnURL)
+        }
+        try fileManager.setAttributes([.modificationDate: date], ofItemAtPath: widgetDrawnURL.path)
+    }
+
+    /// When the widget last redrew from the notes file, if it ever has.
+    public func widgetDrawnDate() -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: widgetDrawnURL.path))?[.modificationDate] as? Date
+    }
+
     private func setAside(because error: DecodingError) throws {
         let stamp = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withYear, .withMonth, .withDay, .withTime])
         let name = "\(url.deletingPathExtension().lastPathComponent).corrupt-\(stamp)-\(UUID().uuidString.prefix(4)).json"

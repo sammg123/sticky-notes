@@ -62,3 +62,25 @@ final class WidgetLayoutTests: XCTestCase {
         XCTAssertEqual(WidgetLayout.rowLimit(contentHeight: 382), 13)
     }
 }
+
+final class WidgetLayoutRowsTests: XCTestCase {
+    private let largeWindow = CGRect(x: 368, y: 221, width: 360, height: 360)
+
+    func test_rowsFrame_coversEveryShownRow_plusAMargin() {
+        let frame = WidgetLayout.rowsFrame(inWindow: largeWindow, rowCount: 3)
+
+        // Rows start at y 275 (see textFrame) and take 3 * 24 - 4 = 68pt; x spans the content
+        // between the paddings (376 + 16 to 720 - 16). The margin is 6pt across, 4pt up and down.
+        XCTAssertEqual(frame, CGRect(x: 392 - 6, y: 275 - 4, width: 312 + 12, height: 68 + 8))
+    }
+
+    func test_rowsFrame_isNil_forNoRows_orMoreThanFit() {
+        XCTAssertNil(WidgetLayout.rowsFrame(inWindow: largeWindow, rowCount: 0))
+        XCTAssertNotNil(WidgetLayout.rowsFrame(inWindow: largeWindow, rowCount: 11))
+        XCTAssertNil(WidgetLayout.rowsFrame(inWindow: largeWindow, rowCount: 12))
+    }
+
+    func test_rowPitch_isARowAndItsSpacing() {
+        XCTAssertEqual(WidgetLayout.rowPitch, 24)
+    }
+}

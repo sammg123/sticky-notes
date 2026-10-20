@@ -56,27 +56,13 @@ final class InlineNoteEditor: NSObject, NSWindowDelegate, NSTextFieldDelegate {
     /// pointer plus the layout the widget draws with. `row` is the line the widget drew the note
     /// on; without it, the note's place in the file stands in.
     private static func lineFrameOnScreen(row: Int?, noteID id: UUID, board: StickyBoard) -> NSRect? {
-        guard let primary = NSScreen.screens.first?.frame else { return nil }
-        let mouse = NSEvent.mouseLocation
-        let pointer = CGPoint(x: mouse.x, y: primary.maxY - mouse.y) // window list coordinates grow down
-        guard let window = WidgetLayout.widgetWindow(containing: pointer, among: desktopWidgetWindows()) else { return nil }
+        let windows = DesktopWidgetWindows.onScreen()
+        guard let window = WidgetLayout.widgetWindow(containing: DesktopWidgetWindows.pointer(), among: windows)?.frame else { return nil }
         let limit = WidgetLayout.rowLimit(contentHeight: WidgetLayout.contentFrame(ofWindow: window).height)
         guard let line = row ?? board.visible(limit: limit).notes.firstIndex(where: { $0.id == id }),
               let note = board.notes.first(where: { $0.id == id }),
               let text = WidgetLayout.textFrame(inWindow: window, row: line, isCrossedOut: note.isCrossedOut) else { return nil }
-        return NSRect(x: text.minX, y: primary.maxY - text.maxY, width: text.width, height: text.height)
-    }
-
-    /// Frames of the desktop widget windows Notification Center draws, in window list coordinates.
-    private static func desktopWidgetWindows() -> [CGRect] {
-        let owners = Set(NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.notificationcenterui").map(\.processIdentifier))
-        let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
-        return list.compactMap { info in
-            guard let pid = info[kCGWindowOwnerPID as String] as? pid_t, owners.contains(pid),
-                  let bounds = info[kCGWindowBounds as String] as? NSDictionary,
-                  let rect = CGRect(dictionaryRepresentation: bounds) else { return nil }
-            return rect
-        }
+        return DesktopWidgetWindows.toScreen(text)
     }
 
     private func makePanel(frame: NSRect) -> NSPanel {

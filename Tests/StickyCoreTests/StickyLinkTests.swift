@@ -28,3 +28,19 @@ final class StickyLinkTests: XCTestCase {
         XCTAssertNil(StickyLink(url: URL(string: "stickynotes://edit/not-a-uuid")!))
     }
 }
+
+final class StickyLinkSourceTests: XCTestCase {
+    func test_widgetURL_opensTheSameLink_andSaysItCameFromTheWidget() {
+        let id = UUID()
+        for link in [StickyLink.add, .edit(id, row: 2), .edit(id, row: nil)] {
+            XCTAssertEqual(StickyLink(url: link.widgetURL), link)
+            XCTAssertTrue(StickyLink.cameFromWidget(link.widgetURL))
+        }
+    }
+
+    func test_plainLinks_didNotComeFromTheWidget() {
+        XCTAssertFalse(StickyLink.cameFromWidget(StickyLink.add.url))
+        XCTAssertFalse(StickyLink.cameFromWidget(URL(string: "stickynotes://add?from=browser")!))
+        XCTAssertFalse(StickyLink.cameFromWidget(URL(string: "https://example.com/?from=widget")!))
+    }
+}

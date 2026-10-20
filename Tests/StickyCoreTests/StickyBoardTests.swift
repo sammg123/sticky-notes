@@ -137,4 +137,23 @@ final class StickyBoardTests: XCTestCase {
         XCTAssertEqual(board.visible(limit: -1).hiddenCount, 2)
         XCTAssertEqual(board.visible(limit: 1).hiddenCount, 2)
     }
+
+    func test_moving_putsTheNoteInItsNewPlace_andLeavesTheOriginalUntouched() {
+        let board = ["d", "c", "b", "a"].reduce(StickyBoard.empty) { $0.adding($1, now: t0) }
+        let a = board.notes[0].id
+
+        let down = board.moving(a, to: 2)
+
+        XCTAssertEqual(down.notes.map(\.text), ["b", "c", "a", "d"])
+        XCTAssertEqual(down.moving(a, to: 0).notes.map(\.text), ["a", "b", "c", "d"])
+        XCTAssertEqual(board.notes.map(\.text), ["a", "b", "c", "d"])
+    }
+
+    func test_moving_keepsTheIndexInsideTheList_andIgnoresUnknownNotes() {
+        let board = ["c", "b", "a"].reduce(StickyBoard.empty) { $0.adding($1, now: t0) }
+
+        XCTAssertEqual(board.moving(board.notes[0].id, to: 99).notes.map(\.text), ["b", "c", "a"])
+        XCTAssertEqual(board.moving(board.notes[2].id, to: -5).notes.map(\.text), ["c", "a", "b"])
+        XCTAssertEqual(board.moving(UUID(), to: 0), board)
+    }
 }

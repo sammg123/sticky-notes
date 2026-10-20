@@ -24,4 +24,10 @@ public enum RowReorder {
         let rest = items.enumerated().filter { $0.offset != from }.map(\.element)
         return Array(rest[..<to]) + [items[from]] + Array(rest[to...])
     }
+
+    /// `translation` held to what keeps the dragged row between the first and last slot.
+    public static func clamped(translation: Double, from index: Int, rowHeight: Double, count: Int) -> Double {
+        guard count > 1 else { return 0 }
+        return min(max(translation, -Double(index) * rowHeight), Double(count - 1 - index) * rowHeight)
+    }
 }

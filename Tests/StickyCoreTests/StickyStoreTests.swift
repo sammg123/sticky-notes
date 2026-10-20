@@ -80,4 +80,14 @@ final class StickyStoreTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: StickyStore.userHomeDirectory().path, isDirectory: &isDir))
         XCTAssertTrue(isDir.boolValue)
     }
+
+    func test_widgetDrawn_isNil_untilTheWidgetMarksIt_thenIsWhenItDid() throws {
+        XCTAssertNil(store.widgetDrawnDate())
+
+        try store.markWidgetDrawn(at: t0)
+
+        XCTAssertEqual(store.widgetDrawnDate(), t0)
+        try store.markWidgetDrawn(at: t0.addingTimeInterval(5))
+        XCTAssertEqual(store.widgetDrawnDate(), t0.addingTimeInterval(5))
+    }
 }

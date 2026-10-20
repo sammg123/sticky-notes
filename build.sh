@@ -75,4 +75,8 @@ done
 # Restart the widget service so a placed widget picks up this build right away.
 killall chronod 2>/dev/null || true
 
+# Running in the background is what lets notes be dragged on the widget; no box on this launch.
+echo "==> Starting Sticky Notes in the background"
+open -g -a "$APP_DIR" --args --background
+
 echo "==> Done: $APP_DIR"

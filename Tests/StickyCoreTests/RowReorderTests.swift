@@ -36,3 +36,19 @@ final class RowReorderTests: XCTestCase {
         XCTAssertEqual(items, ["a", "b", "c", "d"])
     }
 }
+
+final class RowReorderClampTests: XCTestCase {
+    private let h = 24.0
+
+    func test_clamped_keepsTheDraggedRowBetweenTheFirstAndLastSlot() {
+        // Row 1 of 4 can travel one slot up and two slots down, no further.
+        XCTAssertEqual(RowReorder.clamped(translation: -100, from: 1, rowHeight: h, count: 4), -h)
+        XCTAssertEqual(RowReorder.clamped(translation: 100, from: 1, rowHeight: h, count: 4), 2 * h)
+        XCTAssertEqual(RowReorder.clamped(translation: 10, from: 1, rowHeight: h, count: 4), 10)
+    }
+
+    func test_clamped_aSingleRowCannotMove() {
+        XCTAssertEqual(RowReorder.clamped(translation: 30, from: 0, rowHeight: h, count: 1), 0)
+        XCTAssertEqual(RowReorder.clamped(translation: -30, from: 0, rowHeight: h, count: 0), 0)
+    }
+}
