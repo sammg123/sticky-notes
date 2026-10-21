@@ -75,12 +75,12 @@ final class WidgetLayoutRowsTests: XCTestCase {
         XCTAssertEqual(layout.rows.map(\.height), [20, 36, 20, 52])
     }
 
-    func test_rows_capLongNotesAtMaxLines_andGiveEveryNoteALine() {
+    func test_rows_longNotes_takeEveryLineTheyNeed() {
         let (notes, measure) = lines([9, 0])
 
         let layout = WidgetLayout.rows(notes, contentSize: large, lineCount: measure)
 
-        XCTAssertEqual(layout.rows.map(\.lines), [WidgetLayout.maxLines, 1])
+        XCTAssertEqual(layout.rows.map(\.lines), [9, 1])
     }
 
     func test_rows_measureAtTheTextsWidth_lessTheXOnCrossedOutNotes() {
@@ -108,33 +108,30 @@ final class WidgetLayoutRowsTests: XCTestCase {
         XCTAssertEqual(layout.hiddenCount, 3)
     }
 
-    func test_rows_aNoteThatDoesNotFit_isShortenedToTheRoomLeft() {
-        // Small widget, 102pt: 52 + 4, then only one line of the second note leaves room for a
-        // last row, and the last note fits there itself.
+    func test_rows_aNoteThatDoesNotFitWhole_goesUnderNMore_ratherThanBeingCut() {
+        // Small widget, 102pt: 52 + 4, then the next three-line note doesn't fit whole.
         let (notes, measure) = lines([3, 3, 1])
 
         let layout = WidgetLayout.rows(notes, contentSize: small, lineCount: measure)
 
-        XCTAssertEqual(layout.rows.map(\.lines), [3, 1, 1])
-        XCTAssertEqual(layout.rows.map(\.top), [0, 56, 80])
-        XCTAssertEqual(layout.hiddenCount, 0)
-    }
-
-    func test_rows_tallNotes_fitFewer_andLeaveTheLastRowForTheHiddenCount() {
-        let (notes, measure) = lines([3, 3, 1, 1])
-
-        let layout = WidgetLayout.rows(notes, contentSize: small, lineCount: measure)
-
-        XCTAssertEqual(layout.rows.map(\.lines), [3, 1])
+        XCTAssertEqual(layout.rows.map(\.lines), [3])
         XCTAssertEqual(layout.hiddenCount, 2)
     }
 
-    func test_rows_theLastNote_takesWhatRoomIsLeft() {
-        // Two lines left under a two-line note on a small widget: 36 + 4, then 62pt for a note of 9.
-        let (notes, measure) = lines([2, 9])
+    func test_rows_theLastNote_showsWhenItFitsWhole() {
+        // 36 + 4, then 62pt is enough for a three-line last note but not a four-line one.
+        XCTAssertEqual(WidgetLayout.rows(lines([2, 3]).notes, contentSize: small, lineCount: lines([2, 3]).measure).rows.map(\.lines), [2, 3])
+        let tooLong = WidgetLayout.rows(lines([2, 4]).notes, contentSize: small, lineCount: lines([2, 4]).measure)
+        XCTAssertEqual(tooLong.rows.map(\.lines), [2])
+        XCTAssertEqual(tooLong.hiddenCount, 1)
+    }
 
-        XCTAssertEqual(WidgetLayout.rows(notes, contentSize: small, lineCount: measure).rows.map(\.lines), [2, 3])
-        XCTAssertEqual(WidgetLayout.rows(notes, contentSize: CGSize(width: 164, height: 130), lineCount: measure).rows.map(\.lines), [2, 1])
+    func test_rows_aFirstNoteTallerThanTheWidget_getsTheRoomThereIs() {
+        // Alone: all 102pt, 6 lines. With more after it: 78pt above "N more", 4 lines.
+        XCTAssertEqual(WidgetLayout.rows(lines([9]).notes, contentSize: small, lineCount: lines([9]).measure).rows.map(\.lines), [6])
+        let withMore = WidgetLayout.rows(lines([9, 1]).notes, contentSize: small, lineCount: lines([9, 1]).measure)
+        XCTAssertEqual(withMore.rows.map(\.lines), [4])
+        XCTAssertEqual(withMore.hiddenCount, 1)
     }
 
     func test_rows_matchTheOneLineCountsEachSizeHadBefore() {
@@ -156,7 +153,7 @@ final class WidgetLayoutRowsTests: XCTestCase {
     func test_rows_measureWithTheRealFontByDefault() {
         let long = StickyNote(text: String(repeating: "word ", count: 30), createdAt: t0)
 
-        XCTAssertEqual(WidgetLayout.rows([long], contentSize: small).rows.first?.lines, WidgetLayout.maxLines)
+        XCTAssertEqual(WidgetLayout.rows([long], contentSize: large).rows.first?.lines, NoteText.lineCount(long.text, width: 286))
     }
 }
 

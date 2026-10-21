@@ -20,7 +20,7 @@ struct NotesEntryView: View {
     }
 }
 
-/// Header with a +, then the notes, each wrapped to up to three lines. The whole widget opens the box; a note's circle and
+/// Header with a +, then the notes, each wrapped to every line it needs. The whole widget opens the box; a note's circle and
 /// x are buttons, and its text opens an edit field right over that line. Every size and gap comes
 /// from `WidgetLayout`, which the app uses to place that field.
 struct NotesListView: View {

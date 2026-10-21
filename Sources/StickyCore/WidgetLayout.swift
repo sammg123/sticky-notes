@@ -11,8 +11,6 @@ public enum WidgetLayout {
     public static let firstLineHeight: CGFloat = 20
     /// Each further line of a note that wraps.
     public static let lineHeight = NoteText.lineHeight
-    /// Past this a note ends in an ellipsis on the widget; the box and the edit field show it all.
-    public static let maxLines = 3
     public static let rowSpacing: CGFloat = 4
     public static let circleSize: CGFloat = 18
     public static let gap: CGFloat = 8
@@ -56,10 +54,10 @@ public enum WidgetLayout {
         contentWidth - 2 * padding - textInset - (isCrossedOut ? gap + deleteWidth : 0)
     }
 
-    /// The notes that fit under the header of a widget this size, each wrapped to at most
-    /// `maxLines`. When they don't all fit, the last row is left for "N more", and the note
-    /// above it gets whatever lines are left. `lineCount` is how many lines a text takes at a
-    /// width (tests stand in their own).
+    /// The notes that fit whole under the header of a widget this size, each wrapped to every
+    /// line it needs. When they don't all fit, the last row is left for "N more". Only a first
+    /// note taller than the whole widget is cut short, to the room there is. `lineCount` is how
+    /// many lines a text takes at a width (tests stand in their own).
     public static func rows(
         _ notes: [StickyNote],
         contentSize: CGSize,
@@ -74,9 +72,14 @@ public enum WidgetLayout {
             let isLast = index == notes.count - 1
             let usable = room - top - (isLast ? 0 : rowSpacing + firstLineHeight)
             let width = textWidth(contentWidth: contentSize.width, isCrossedOut: note.isCrossedOut)
-            let wanted = min(max(lineCount(note.text, width), 1), maxLines)
-            guard let lines = (1...wanted).reversed().first(where: { rowHeight(lines: $0) <= usable }) else { break }
-            shown.append(Row(note: note, lines: lines, top: top))
+            let wanted = max(lineCount(note.text, width), 1)
+            guard rowHeight(lines: wanted) <= usable else {
+                if shown.isEmpty, let room = (1..<wanted).reversed().first(where: { rowHeight(lines: $0) <= usable }) {
+                    shown.append(Row(note: note, lines: room, top: top))
+                }
+                break
+            }
+            shown.append(Row(note: note, lines: wanted, top: top))
         }
         return Rows(rows: shown, hiddenCount: notes.count - shown.count)
     }
