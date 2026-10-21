@@ -21,22 +21,27 @@ struct NoteCircleMark: View {
             .font(.system(size: 14))
             .foregroundStyle(ink.opacity(0.55))
             .frame(width: WidgetLayout.circleSize, height: WidgetLayout.circleSize)
+            // Centered on the note's first line, however many lines the note wraps to.
+            .frame(height: WidgetLayout.firstLineHeight)
             .contentShape(Rectangle())
     }
 }
 
-/// The note's text, struck through and faded once crossed out.
+/// The note's text, wrapped to the lines its row has, struck through and faded once crossed out.
 struct NoteTextLabel: View {
     let note: StickyNote
+    /// From `WidgetLayout.rows`, which the app's overlays are placed by too.
+    let lines: Int
     let ink: Color
 
     var body: some View {
         Text(note.text)
-            .font(.system(size: 13))
+            .font(.system(size: NoteText.fontSize))
             .strikethrough(note.isCrossedOut)
             .foregroundStyle(note.isCrossedOut ? ink.opacity(0.4) : ink)
-            .lineLimit(1)
+            .lineLimit(lines)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: WidgetLayout.rowHeight(lines: lines))
             .contentShape(Rectangle())
     }
 }
@@ -49,7 +54,7 @@ struct NoteDeleteMark: View {
         Image(systemName: "xmark")
             .font(.system(size: 10, weight: .heavy))
             .foregroundStyle(ink.opacity(0.6))
-            .frame(width: WidgetLayout.deleteWidth, height: WidgetLayout.rowHeight)
+            .frame(width: WidgetLayout.deleteWidth, height: WidgetLayout.firstLineHeight)
             .contentShape(Rectangle())
     }
 }

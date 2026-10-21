@@ -7,7 +7,12 @@ public enum WidgetLayout {
     public static let padding: CGFloat = 16
     public static let headerHeight: CGFloat = 22
     public static let headerSpacing: CGFloat = 8
-    public static let rowHeight: CGFloat = 20
+    /// A row's first line: a line of text with 2pt above and below. The circle and x sit on it.
+    public static let firstLineHeight: CGFloat = 20
+    /// Each further line of a note that wraps.
+    public static let lineHeight = NoteText.lineHeight
+    /// Past this a note ends in an ellipsis on the widget; the box and the edit field show it all.
+    public static let maxLines = 3
     public static let rowSpacing: CGFloat = 4
     public static let circleSize: CGFloat = 18
     public static let gap: CGFloat = 8
@@ -16,16 +21,64 @@ public enum WidgetLayout {
     public static let textInset = circleSize + gap
     /// Desktop widget windows extend this far past the widget on every side (its shadow).
     public static let windowInset: CGFloat = 8
-    /// From one row's top to the next.
-    public static let rowPitch = rowHeight + rowSpacing
     /// How far the area redrawn during a drag reaches past the rows, so a lifted row's backing
     /// and shadow have room without touching the header or the widget's rounded corners.
     public static let stageMargin = CGSize(width: 6, height: 4)
 
-    /// One-line rows that fit under the header in a widget this tall.
-    public static func rowLimit(contentHeight: CGFloat) -> Int {
-        let room = contentHeight - 2 * padding - headerHeight - headerSpacing + rowSpacing
-        return max(0, Int((room / rowPitch).rounded(.down)))
+    /// One note on the widget: how many lines it wraps to and where its row starts.
+    public struct Row: Equatable, Sendable {
+        public let note: StickyNote
+        public let lines: Int
+        /// From the top of the first row, y down.
+        public let top: CGFloat
+
+        public init(note: StickyNote, lines: Int, top: CGFloat) {
+            self.note = note
+            self.lines = lines
+            self.top = top
+        }
+
+        public var height: CGFloat { WidgetLayout.rowHeight(lines: lines) }
+    }
+
+    /// The rows the widget shows, and how many notes didn't fit (the last row then says so).
+    public struct Rows: Equatable, Sendable {
+        public let rows: [Row]
+        public let hiddenCount: Int
+    }
+
+    public static func rowHeight(lines: Int) -> CGFloat {
+        firstLineHeight + CGFloat(max(lines, 1) - 1) * lineHeight
+    }
+
+    /// How wide a note's text is: the row less the circle, and less the x once crossed out.
+    public static func textWidth(contentWidth: CGFloat, isCrossedOut: Bool) -> CGFloat {
+        contentWidth - 2 * padding - textInset - (isCrossedOut ? gap + deleteWidth : 0)
+    }
+
+    /// The notes that fit under the header of a widget this size, each wrapped to at most
+    /// `maxLines`. When they don't all fit, the last row is left for "N more", and the note
+    /// above it gets whatever lines are left. `lineCount` is how many lines a text takes at a
+    /// width (tests stand in their own).
+    public static func rows(
+        _ notes: [StickyNote],
+        contentSize: CGSize,
+        lineCount: (String, CGFloat) -> Int = NoteText.lineCount
+    ) -> Rows {
+        let room = contentSize.height - 2 * padding - headerHeight - headerSpacing
+        var shown: [Row] = []
+        for (index, note) in notes.enumerated() {
+            let top = shown.last.map { $0.top + $0.height + rowSpacing } ?? 0
+            // Every note but the last leaves room under it for at least "N more", since a note
+            // that doesn't leaves no room for any note after it either.
+            let isLast = index == notes.count - 1
+            let usable = room - top - (isLast ? 0 : rowSpacing + firstLineHeight)
+            let width = textWidth(contentWidth: contentSize.width, isCrossedOut: note.isCrossedOut)
+            let wanted = min(max(lineCount(note.text, width), 1), maxLines)
+            guard let lines = (1...wanted).reversed().first(where: { rowHeight(lines: $0) <= usable }) else { break }
+            shown.append(Row(note: note, lines: lines, top: top))
+        }
+        return Rows(rows: shown, hiddenCount: notes.count - shown.count)
     }
 
     /// Widget sides vary by display (164/344pt here, 170/364/382pt on larger screens), so any
@@ -54,29 +107,34 @@ public enum WidgetLayout {
         window.insetBy(dx: windowInset, dy: windowInset)
     }
 
-    /// Where row `row`'s text is drawn, in the window's coordinate system with y growing down
-    /// (as CGWindowList reports it). Nil for a row the widget has no room to show.
-    public static func textFrame(inWindow window: CGRect, row: Int, isCrossedOut: Bool) -> CGRect? {
+    /// Where a row's text is drawn, every line of it, in the window's coordinate system with
+    /// y growing down (as CGWindowList reports it).
+    public static func textFrame(inWindow window: CGRect, row: Row) -> CGRect {
         let content = contentFrame(ofWindow: window)
-        guard row >= 0, row < rowLimit(contentHeight: content.height) else { return nil }
-        let x = content.minX + padding + textInset
-        let y = content.minY + padding + headerHeight + headerSpacing + CGFloat(row) * rowPitch
-        let trailing = padding + (isCrossedOut ? gap + deleteWidth : 0)
-        return CGRect(x: x, y: y, width: content.maxX - trailing - x, height: rowHeight)
+        return CGRect(
+            x: content.minX + padding + textInset,
+            y: rowsTop(in: content) + row.top,
+            width: textWidth(contentWidth: content.width, isCrossedOut: row.note.isCrossedOut),
+            height: row.height
+        )
     }
 
-    /// The first `rowCount` rows and `stageMargin` around them (window coordinates, y down): the
-    /// area the app redraws over the widget while a note is dragged. Nil for no rows, or more
-    /// rows than the widget shows.
-    public static func rowsFrame(inWindow window: CGRect, rowCount: Int) -> CGRect? {
+    /// `rows` and `stageMargin` around them (window coordinates, y down): the area the app
+    /// redraws over the widget while a note is dragged. Nil for no rows.
+    public static func rowsFrame(inWindow window: CGRect, rows: [Row]) -> CGRect? {
+        guard let first = rows.first, let last = rows.last else { return nil }
         let content = contentFrame(ofWindow: window)
-        guard rowCount > 0, rowCount <= rowLimit(contentHeight: content.height) else { return nil }
-        let rows = CGRect(
+        let frame = CGRect(
             x: content.minX + padding,
-            y: content.minY + padding + headerHeight + headerSpacing,
+            y: rowsTop(in: content) + first.top,
             width: content.width - 2 * padding,
-            height: CGFloat(rowCount) * rowPitch - rowSpacing
+            height: last.top + last.height - first.top
         )
-        return rows.insetBy(dx: -stageMargin.width, dy: -stageMargin.height)
+        return frame.insetBy(dx: -stageMargin.width, dy: -stageMargin.height)
+    }
+
+    /// Where the first row starts, under the header.
+    private static func rowsTop(in content: CGRect) -> CGFloat {
+        content.minY + padding + headerHeight + headerSpacing
     }
 }

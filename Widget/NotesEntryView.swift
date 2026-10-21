@@ -7,49 +7,48 @@ struct NotesEntryView: View {
     @Environment(\.widgetFamily) private var family
 
     var body: some View {
-        // Rows from the widget's real height (it varies by display), the same measurement the
+        // Rows from the widget's real size (it varies by display), the same measurement the
         // app makes when it places an edit field. Small widgets can't hold links, so there a
         // note's text is a button that opens the link.
         GeometryReader { geometry in
             NotesListView(
                 entry: entry,
-                limit: WidgetLayout.rowLimit(contentHeight: geometry.size.height),
+                layout: WidgetLayout.rows(entry.board.notes, contentSize: geometry.size),
                 editsViaIntent: family == .systemSmall
             )
         }
     }
 }
 
-/// Header with a +, then one note per line. The whole widget opens the box; a note's circle and
+/// Header with a +, then the notes, each wrapped to up to three lines. The whole widget opens the box; a note's circle and
 /// x are buttons, and its text opens an edit field right over that line. Every size and gap comes
 /// from `WidgetLayout`, which the app uses to place that field.
 struct NotesListView: View {
     let entry: NotesEntry
-    let limit: Int
+    let layout: WidgetLayout.Rows
     let editsViaIntent: Bool
     @Environment(\.widgetRenderingMode) private var renderingMode
 
     private var ink: Color { renderingMode == .fullColor ? StickyPalette.ink : .primary }
 
     var body: some View {
-        let visible = entry.board.visible(limit: limit)
         VStack(alignment: .leading, spacing: WidgetLayout.headerSpacing) {
             header
             if let error = entry.loadError {
                 message("Can't read your notes", detail: error)
-            } else if visible.notes.isEmpty {
+            } else if entry.board.notes.isEmpty {
                 message("No notes", detail: "Click anywhere to add one")
             } else {
                 VStack(alignment: .leading, spacing: WidgetLayout.rowSpacing) {
-                    ForEach(Array(visible.notes.enumerated()), id: \.element.id) { row, note in
-                        NoteRow(note: note, row: row, ink: ink, editsViaIntent: editsViaIntent)
+                    ForEach(Array(layout.rows.enumerated()), id: \.element.note.id) { index, row in
+                        NoteRow(note: row.note, row: index, lines: row.lines, ink: ink, editsViaIntent: editsViaIntent)
                     }
-                    if visible.hiddenCount > 0 {
-                        Text("\(visible.hiddenCount) more")
+                    if layout.hiddenCount > 0 {
+                        Text("\(layout.hiddenCount) more")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(ink.opacity(0.55))
                             .padding(.leading, WidgetLayout.textInset)
-                            .frame(height: WidgetLayout.rowHeight)
+                            .frame(height: WidgetLayout.firstLineHeight)
                     }
                 }
             }
@@ -94,13 +93,14 @@ struct NotesListView: View {
 /// running it catches presses on the text itself, so it can tell a click from a drag.)
 private struct NoteRow: View {
     let note: StickyNote
-    /// The line it's drawn on, sent with the edit link so the field lands where the user clicked.
+    /// The row it's drawn on, sent with the edit link so the field lands where the user clicked.
     let row: Int
+    let lines: Int
     let ink: Color
     let editsViaIntent: Bool
 
     var body: some View {
-        HStack(spacing: WidgetLayout.gap) {
+        HStack(alignment: .top, spacing: WidgetLayout.gap) {
             Button(intent: ToggleNoteIntent(id: note.id)) { NoteCircleMark(note: note, ink: ink) }
                 .buttonStyle(.plain)
                 .accessibilityLabel(note.isCrossedOut ? "Bring back \(note.text)" : "Cross out \(note.text)")
@@ -113,7 +113,7 @@ private struct NoteRow: View {
                     .accessibilityLabel("Delete \(note.text)")
             }
         }
-        .frame(height: WidgetLayout.rowHeight)
+        .frame(height: WidgetLayout.rowHeight(lines: lines))
     }
 
     @ViewBuilder
@@ -128,5 +128,5 @@ private struct NoteRow: View {
         }
     }
 
-    private var noteText: some View { NoteTextLabel(note: note, ink: ink) }
+    private var noteText: some View { NoteTextLabel(note: note, lines: lines, ink: ink) }
 }

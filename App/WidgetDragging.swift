@@ -37,10 +37,10 @@ final class WidgetDragging {
         let line: RowCatchers.Line
         let gesture: WidgetPress
         /// The rows as they were when the press began.
-        let notes: [StickyNote]
+        let rows: [WidgetLayout.Row]
         let isLifted: Bool
 
-        func lifted() -> Press { Press(line: line, gesture: gesture, notes: notes, isLifted: true) }
+        func lifted() -> Press { Press(line: line, gesture: gesture, rows: rows, isLifted: true) }
     }
 
     init(
@@ -129,16 +129,14 @@ final class WidgetDragging {
         }
     }
 
-    private func visibleNotes(in window: DesktopWindow) -> [StickyNote] {
-        let limit = WidgetLayout.rowLimit(contentHeight: WidgetLayout.contentFrame(ofWindow: window.frame).height)
-        return board.visible(limit: limit).notes
+    private func visibleRows(in window: DesktopWindow) -> [WidgetLayout.Row] {
+        WidgetLayout.rows(board.notes, contentSize: WidgetLayout.contentFrame(ofWindow: window.frame).size).rows
     }
 
     private func lines(in window: DesktopWindow) -> [RowCatchers.Line] {
-        visibleNotes(in: window).enumerated().compactMap { row, note in
-            WidgetLayout.textFrame(inWindow: window.frame, row: row, isCrossedOut: note.isCrossedOut).map {
-                RowCatchers.Line(noteID: note.id, row: row, frame: DesktopWidgetWindows.toScreen($0))
-            }
+        visibleRows(in: window).enumerated().map { index, row in
+            let frame = WidgetLayout.textFrame(inWindow: window.frame, row: row)
+            return RowCatchers.Line(noteID: row.note.id, row: index, frame: DesktopWidgetWindows.toScreen(frame))
         }
     }
 
@@ -154,16 +152,16 @@ final class WidgetDragging {
         cancelPress()
         guard !stage.isVisible, let window else { return }
         reloadBoardIfChanged()
-        let notes = visibleNotes(in: window)
-        guard notes.indices.contains(line.row) else {
+        let rows = visibleRows(in: window)
+        guard rows.indices.contains(line.row) else {
             refresh()
             return
         }
-        // The press is on whatever note that line shows now, which can differ from when the
+        // The press is on whatever note that row shows now, which can differ from when the
         // catchers were last placed (a drop or a circle click since).
-        let pressed = RowCatchers.Line(noteID: notes[line.row].id, row: line.row, frame: line.frame)
+        let pressed = RowCatchers.Line(noteID: rows[line.row].note.id, row: line.row, frame: line.frame)
         let gesture = WidgetPress(start: point, startTime: time)
-        press = Press(line: pressed, gesture: gesture, notes: notes, isLifted: false)
+        press = Press(line: pressed, gesture: gesture, rows: rows, isLifted: false)
         buttonUpReadings = 0
         // Held still: lift once the hold delay passes, without waiting for the pointer to move.
         // A button already up means the release is on its way (a click) or was lost (the
@@ -198,9 +196,9 @@ final class WidgetDragging {
 
     private func lift() {
         guard let current = press, let window,
-              let rows = WidgetLayout.rowsFrame(inWindow: window.frame, rowCount: current.notes.count) else { return }
+              let area = WidgetLayout.rowsFrame(inWindow: window.frame, rows: current.rows) else { return }
         press = current.lifted()
-        stage.show(notes: current.notes, lifting: current.line.row, frame: DesktopWidgetWindows.toScreen(rows), level: Self.level(above: window))
+        stage.show(rows: current.rows, lifting: current.line.row, frame: DesktopWidgetWindows.toScreen(area), level: Self.level(above: window))
     }
 
     private func drop(_ ended: Press) {
@@ -215,7 +213,7 @@ final class WidgetDragging {
             // Up until the widget has redrawn from the saved file (it marks the start of each
             // redraw, before it reads), so the old order never flashes back.
             let saved = notesModificationDate() ?? Date()
-            stage.drop(into: RowReorder.moved(ended.notes, from: from, to: target)) { [store] in
+            stage.drop(into: RowReorder.moved(ended.rows.map(\.note), from: from, to: target)) { [store] in
                 (store.widgetDrawnDate() ?? .distantPast) >= saved
             }
         } catch {

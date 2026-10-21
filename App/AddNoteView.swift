@@ -37,7 +37,8 @@ struct AddNoteView: View {
                 Spacer(minLength: 8)
                 CloseButton(action: onClose)
             }
-            TextField("Add a note, then press Return", text: $text)
+            // Wraps onto more lines rather than scrolling sideways; Return still adds the note.
+            TextField("Add a note, then press Return", text: $text, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
                 .padding(.horizontal, 8)

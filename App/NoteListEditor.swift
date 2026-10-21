@@ -1,15 +1,16 @@
 import SwiftUI
 import StickyCore
 
-/// The notes under the text field in the box. Drag a row and the others slide out of its way;
-/// let go and it snaps into the nearest slot. The circle and x work as on the widget, and the
+/// The notes under the text field in the box, each wrapped to as many lines as it needs. Drag a
+/// row and the others slide out of its way; let go and it snaps into the nearest slot. The circle and x work as on the widget, and the
 /// pencil turns a row into a text field: Return or a click elsewhere saves, Escape cancels, and
 /// starting another row's edit saves this one first.
 struct NoteListEditor: View {
+    /// A one-line row; notes that wrap make theirs taller.
     static let rowHeight: CGFloat = 28
-    /// More than this and the list scrolls instead of growing the box. A drag only reaches the
+    /// Taller than this and the list scrolls instead of growing the box. A drag only reaches the
     /// rows in view (there's no autoscroll), so this is set high enough for a typical list.
-    private static let maxVisibleRows = 14
+    private static let maxListHeight = rowHeight * 14
     private static let snap = Animation.snappy(duration: 0.2)
 
     let notes: [StickyNote]
@@ -19,6 +20,8 @@ struct NoteListEditor: View {
     let onEdit: (UUID, String) -> Void
 
     @State private var drag: DragState?
+    /// Each row's height as laid out, by note.
+    @State private var rowHeights: [UUID: CGFloat] = [:]
     @State private var editingID: UUID?
     /// The text in the row being edited; kept here so starting another edit can save it.
     @State private var draft: String
@@ -47,12 +50,17 @@ struct NoteListEditor: View {
     }
 
     var body: some View {
-        if notes.count > Self.maxVisibleRows {
+        if heights.reduce(0, +) > Self.maxListHeight {
             ScrollView { rows }
-                .frame(height: Self.rowHeight * CGFloat(Self.maxVisibleRows))
+                .frame(height: Self.maxListHeight)
         } else {
             rows
         }
+    }
+
+    /// The rows' heights in list order; one line's worth until a row has been measured.
+    private var heights: [Double] {
+        notes.map { Double(rowHeights[$0.id] ?? Self.rowHeight) }
     }
 
     private var rows: some View {
@@ -72,6 +80,7 @@ struct NoteListEditor: View {
                     onLeave: { save(note.id) },
                     onCancel: { if editingID == note.id { editingID = nil } }
                 )
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { rowHeights[note.id] = $0 }
                 .offset(y: offset(of: index, isDragged: isDragged))
                 .animation(isDragged ? nil : Self.snap, value: target)
                 .zIndex(isDragged ? 1 : 0)
@@ -113,14 +122,14 @@ struct NoteListEditor: View {
     /// The slot the dragged row would land in right now.
     private var target: Int? {
         drag.map {
-            RowReorder.destination(from: $0.from, translation: $0.translation, rowHeight: Self.rowHeight, count: notes.count)
+            RowReorder.destination(from: $0.from, translation: $0.translation, heights: heights, spacing: 0)
         }
     }
 
     private func offset(of index: Int, isDragged: Bool) -> CGFloat {
         guard let drag, let target else { return 0 }
         if isDragged { return drag.translation }
-        return RowReorder.shift(row: index, from: drag.from, to: target, rowHeight: Self.rowHeight)
+        return RowReorder.shift(row: index, from: drag.from, to: target, heights: heights, spacing: 0)
     }
 
     private func dragGesture(id: UUID, index: Int) -> some Gesture {
@@ -159,16 +168,19 @@ private struct NoteEditRow: View {
 
     @FocusState private var isFieldFocused: Bool
 
+    /// Buttons are this square, and a row's first line this tall.
+    private static let iconSide: CGFloat = 20
     private static let focusAttempts = 10
     private static let focusRetry: UInt64 = 50_000_000
 
     var body: some View {
-        HStack(spacing: 8) {
+        // Top-aligned: the buttons stay on the first line of a note that wraps.
+        HStack(alignment: .top, spacing: 8) {
             iconButton(note.isCrossedOut ? "checkmark.circle.fill" : "circle", size: 14, weight: .regular,
                        label: note.isCrossedOut ? "Bring back \(note.text)" : "Cross out \(note.text)") { onToggle(note.id) }
 
             if isEditing {
-                TextField("Note", text: $draft)
+                TextField("Note", text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
                     .focused($isFieldFocused)
@@ -198,7 +210,8 @@ private struct NoteEditRow: View {
                     .font(.system(size: 13))
                     .strikethrough(note.isCrossedOut)
                     .foregroundStyle(note.isCrossedOut ? .secondary : .primary)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 2)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 iconButton("pencil", size: 12, weight: .medium, label: "Edit \(note.text)", action: onStartEditing)
             }
@@ -210,10 +223,11 @@ private struct NoteEditRow: View {
             Image(systemName: "line.3.horizontal")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.tertiary)
+                .frame(height: Self.iconSide)
                 .accessibilityHidden(true)
         }
         .padding(.horizontal, 8)
-        .frame(height: NoteListEditor.rowHeight)
+        .padding(.vertical, (NoteListEditor.rowHeight - Self.iconSide) / 2)
         .background {
             RoundedRectangle(cornerRadius: 7)
                 .fill(isLifted ? AnyShapeStyle(.background) : AnyShapeStyle(.clear))
@@ -229,7 +243,7 @@ private struct NoteEditRow: View {
             Image(systemName: symbol)
                 .font(.system(size: size, weight: weight))
                 .foregroundStyle(.secondary)
-                .frame(width: 20, height: 20)
+                .frame(width: Self.iconSide, height: Self.iconSide)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

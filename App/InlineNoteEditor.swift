@@ -3,8 +3,8 @@ import WidgetKit
 import StickyCore
 
 /// Edits a note right on the desktop widget: a borderless sticky-yellow field laid exactly over
-/// the note's line. Return saves, Escape cancels, and clicking elsewhere saves (as renaming in
-/// Finder does).
+/// the note's text, wrapping as the widget does and growing downward as the text gets longer.
+/// Return saves, Escape cancels, and clicking elsewhere saves (as renaming in Finder does).
 @MainActor
 final class InlineNoteEditor: NSObject, NSWindowDelegate, NSTextFieldDelegate {
     /// How far the field's paper reaches past the widget's text on each side.
@@ -17,6 +17,8 @@ final class InlineNoteEditor: NSObject, NSWindowDelegate, NSTextFieldDelegate {
     private var panel: NSPanel?
     private var field: NSTextField?
     private var noteID: UUID?
+    /// Where the note's text starts on screen (top left, AppKit coordinates) and how wide it is.
+    private var textArea: (topLeft: NSPoint, width: CGFloat)?
     private var previousApp: NSRunningApplication?
 
     /// Opens the field over line `row` (where the widget drew `id`; looked up if not given) of
@@ -25,14 +27,17 @@ final class InlineNoteEditor: NSObject, NSWindowDelegate, NSTextFieldDelegate {
     func show(noteID id: UUID, row: Int?) -> Bool {
         guard let board = try? StickyStore().load(),
               let note = board.notes.first(where: { $0.id == id }),
-              let screenFrame = Self.lineFrameOnScreen(row: row, noteID: id, board: board) else { return false }
+              let screenFrame = Self.textFrameOnScreen(row: row, noteID: id, board: board) else { return false }
         // Opening over another edit: that edit's app is still the one to go back to.
         let earlier = previousApp
         finish(saving: true, restoringFocus: false)
         let front = NSWorkspace.shared.frontmostApplication
         previousApp = front?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? earlier : front
         noteID = id
-        let panel = makePanel(frame: screenFrame.insetBy(dx: -Self.outset.width, dy: -Self.outset.height))
+        let area = (topLeft: NSPoint(x: screenFrame.minX, y: screenFrame.maxY), width: screenFrame.width)
+        textArea = area
+        // Every line of the note, even past the three the widget shows.
+        let panel = makePanel(frame: Self.panelFrame(for: note.text, in: area))
         let field = makeField(text: note.text, in: panel)
         self.panel = panel
         self.field = field
@@ -53,16 +58,25 @@ final class InlineNoteEditor: NSObject, NSWindowDelegate, NSTextFieldDelegate {
     }
 
     /// Where the note's text sits on screen (AppKit coordinates): the widget window under the
-    /// pointer plus the layout the widget draws with. `row` is the line the widget drew the note
+    /// pointer plus the layout the widget draws with. `row` is the row the widget drew the note
     /// on; without it, the note's place in the file stands in.
-    private static func lineFrameOnScreen(row: Int?, noteID id: UUID, board: StickyBoard) -> NSRect? {
+    private static func textFrameOnScreen(row: Int?, noteID id: UUID, board: StickyBoard) -> NSRect? {
         let windows = DesktopWidgetWindows.onScreen()
-        guard let window = WidgetLayout.widgetWindow(containing: DesktopWidgetWindows.pointer(), among: windows)?.frame else { return nil }
-        let limit = WidgetLayout.rowLimit(contentHeight: WidgetLayout.contentFrame(ofWindow: window).height)
-        guard let line = row ?? board.visible(limit: limit).notes.firstIndex(where: { $0.id == id }),
-              let note = board.notes.first(where: { $0.id == id }),
-              let text = WidgetLayout.textFrame(inWindow: window, row: line, isCrossedOut: note.isCrossedOut) else { return nil }
-        return DesktopWidgetWindows.toScreen(text)
+        guard let window = WidgetLayout.widgetWindow(containing: DesktopWidgetWindows.pointer(), among: windows)?.frame,
+              let note = board.notes.first(where: { $0.id == id }) else { return nil }
+        let rows = WidgetLayout.rows(board.notes, contentSize: WidgetLayout.contentFrame(ofWindow: window).size).rows
+        guard let index = row ?? rows.firstIndex(where: { $0.note.id == id }), rows.indices.contains(index) else { return nil }
+        // That row's place, with this note's own width (the x) in case the notes changed since.
+        let placed = WidgetLayout.Row(note: note, lines: rows[index].lines, top: rows[index].top)
+        return DesktopWidgetWindows.toScreen(WidgetLayout.textFrame(inWindow: window, row: placed))
+    }
+
+    /// The field's paper for `text`: every line it wraps to at the widget's width, hanging down
+    /// from the top of the note, plus `outset` all round.
+    private static func panelFrame(for text: String, in area: (topLeft: NSPoint, width: CGFloat)) -> NSRect {
+        let height = WidgetLayout.rowHeight(lines: NoteText.lineCount(text, width: area.width))
+        return NSRect(x: area.topLeft.x, y: area.topLeft.y - height, width: area.width, height: height)
+            .insetBy(dx: -outset.width, dy: -outset.height)
     }
 
     private func makePanel(frame: NSRect) -> NSPanel {
@@ -75,6 +89,7 @@ final class InlineNoteEditor: NSObject, NSWindowDelegate, NSTextFieldDelegate {
         panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         panel.delegate = self
         let paper = NSView(frame: NSRect(origin: .zero, size: frame.size))
+        paper.autoresizesSubviews = true
         paper.wantsLayer = true
         paper.layer?.backgroundColor = Self.paper.cgColor
         paper.layer?.cornerRadius = 5
@@ -91,16 +106,21 @@ final class InlineNoteEditor: NSObject, NSWindowDelegate, NSTextFieldDelegate {
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.usesSingleLineMode = true
-        field.cell?.isScrollable = true
-        field.cell?.wraps = false
+        // Wraps where the widget does: the same font, and its 2pt inset each side leaves the
+        // widget's text width to wrap in.
+        field.usesSingleLineMode = false
+        field.cell?.isScrollable = false
+        field.cell?.wraps = true
+        field.lineBreakMode = .byWordWrapping
         field.delegate = self
         field.setAccessibilityLabel("Edit note")
         let bounds = panel.contentView?.bounds ?? .zero
-        let height = field.intrinsicContentSize.height
-        // Text starts where the widget's text starts, vertically centered on the line.
+        // Text starts where the widget's text starts: 2pt into the row, as the widget draws it.
         let x = Self.outset.width - Self.textFieldInset
-        field.frame = NSRect(x: x, y: ((bounds.height - height) / 2).rounded(), width: bounds.width - 2 * x, height: height)
+        let y = Self.outset.height + (WidgetLayout.firstLineHeight - WidgetLayout.lineHeight) / 2
+        field.frame = NSRect(x: x, y: y, width: bounds.width - 2 * x, height: bounds.height - 2 * y)
+        // Grows with the paper as more lines are typed.
+        field.autoresizingMask = [.width, .height]
         panel.contentView?.addSubview(field)
         return field
     }
@@ -123,6 +143,14 @@ final class InlineNoteEditor: NSObject, NSWindowDelegate, NSTextFieldDelegate {
         }
     }
 
+    /// A line more or less: the paper grows or shrinks downward to fit, as the widget would.
+    func controlTextDidChange(_ notification: Notification) {
+        guard let panel, let field, let textArea else { return }
+        let frame = Self.panelFrame(for: field.currentEditor()?.string ?? field.stringValue, in: textArea)
+        guard frame != panel.frame else { return }
+        panel.setFrame(frame, display: true)
+    }
+
     /// Tab or Shift-Tab ends editing without a command we see above: keep what was typed.
     /// (Other endings are focus changes inside AppKit and are not the user leaving the field.)
     func controlTextDidEndEditing(_ notification: Notification) {
@@ -143,6 +171,7 @@ final class InlineNoteEditor: NSObject, NSWindowDelegate, NSTextFieldDelegate {
         self.panel = nil
         self.field = nil
         self.noteID = nil
+        textArea = nil
         // The field editor holds what's typed until editing ends; stringValue can still be stale.
         if saving { save(field.currentEditor()?.string ?? field.stringValue, to: noteID) }
         panel.orderOut(nil)

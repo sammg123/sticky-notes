@@ -1,6 +1,6 @@
 import Foundation
 
-/// One line on the widget. Its circle crosses it out and back; a crossed-out note also gets a
+/// One note on the widget. Its circle crosses it out and back; a crossed-out note also gets a
 /// button that removes it.
 public struct StickyNote: Codable, Identifiable, Equatable, Sendable {
     public let id: UUID
@@ -18,7 +18,7 @@ public struct StickyNote: Codable, Identifiable, Equatable, Sendable {
 
 /// Every note, newest first. Changes return a new board.
 public struct StickyBoard: Codable, Equatable, Sendable {
-    /// Plenty for a one-line note; keeps a pasted essay from bloating the file.
+    /// Plenty for a note; keeps a pasted essay from bloating the file.
     public static let maxTextLength = 280
 
     public static let empty = StickyBoard(notes: [])
@@ -76,13 +76,5 @@ public struct StickyBoard: Codable, Equatable, Sendable {
     public func moving(_ id: UUID, to index: Int) -> StickyBoard {
         guard let from = notes.firstIndex(where: { $0.id == id }) else { return self }
         return StickyBoard(notes: RowReorder.moved(notes, from: from, to: min(max(index, 0), notes.count - 1)))
-    }
-
-    /// What fits in `limit` rows: every note if they all fit, otherwise all but the last row,
-    /// which then says how many notes did not fit.
-    public func visible(limit: Int) -> (notes: [StickyNote], hiddenCount: Int) {
-        let rows = notes.count <= limit ? notes.count : max(0, limit - 1)
-        let shown = Array(notes.prefix(rows))
-        return (shown, notes.count - shown.count)
     }
 }

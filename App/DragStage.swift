@@ -27,11 +27,12 @@ final class DragStage {
     /// Called once the stage has faded away.
     var onHidden: (() -> Void)?
 
-    /// Draws `notes` over the widget at `frame` (screen coordinates, `WidgetLayout.rowsFrame`)
+    /// Draws `rows` over the widget at `frame` (screen coordinates, `WidgetLayout.rowsFrame`)
     /// and lifts the one at `lifted`.
-    func show(notes: [StickyNote], lifting lifted: Int, frame: NSRect, level: NSWindow.Level) {
+    func show(rows: [WidgetLayout.Row], lifting lifted: Int, frame: NSRect, level: NSWindow.Level) {
         generation += 1
-        model.notes = notes
+        model.notes = rows.map(\.note)
+        model.lines = Dictionary(rows.map { ($0.note.id, $0.lines) }, uniquingKeysWith: { first, _ in first })
         model.lifted = nil
         model.pendingLift = lifted
         model.translation = 0
@@ -53,7 +54,7 @@ final class DragStage {
     /// Pointer movement since the press, in points, positive downward.
     func drag(by translation: CGFloat) {
         guard let lifted = model.lifted ?? model.pendingLift else { return }
-        model.translation = RowReorder.clamped(translation: translation, from: lifted, rowHeight: WidgetLayout.rowPitch, count: model.notes.count)
+        model.translation = RowReorder.clamped(translation: translation, from: lifted, heights: model.heights, spacing: WidgetLayout.rowSpacing)
     }
 
     /// The slot the lifted note would land in now.
@@ -130,6 +131,8 @@ final class DragStage {
 @Observable
 final class DragStageModel {
     var notes: [StickyNote] = []
+    /// How many lines each note wraps to, by id, so they go with the note as it moves.
+    var lines: [UUID: Int] = [:]
     /// The row being dragged, once it has visibly lifted.
     var lifted: Int?
     /// Set before the lift animates in, so early pointer movement isn't lost.
@@ -138,9 +141,14 @@ final class DragStageModel {
 
     var target: Int? {
         (lifted ?? pendingLift).map {
-            RowReorder.destination(from: $0, translation: translation, rowHeight: WidgetLayout.rowPitch, count: notes.count)
+            RowReorder.destination(from: $0, translation: translation, heights: heights, spacing: WidgetLayout.rowSpacing)
         }
     }
+
+    func lines(of note: StickyNote) -> Int { lines[note.id] ?? 1 }
+
+    /// Each row's height, in the current order.
+    var heights: [Double] { notes.map { Double(WidgetLayout.rowHeight(lines: lines(of: $0))) } }
 }
 
 /// The widget's rows on its paper, laid out with the same numbers the widget uses.
@@ -148,13 +156,14 @@ struct DragStageView: View {
     let model: DragStageModel
 
     var body: some View {
+        let tops = RowReorder.tops(heights: model.heights, spacing: WidgetLayout.rowSpacing)
         ZStack(alignment: .topLeading) {
             // Covers the widget's own rows while they're being rearranged.
             Rectangle().fill(StickyPalette.paper)
             ForEach(Array(model.notes.enumerated()), id: \.element.id) { index, note in
                 let isLifted = model.lifted == index
-                StageLine(note: note, isLifted: isLifted)
-                    .offset(y: WidgetLayout.stageMargin.height + CGFloat(index) * WidgetLayout.rowPitch + offset(of: index))
+                StageLine(note: note, lines: model.lines(of: note), isLifted: isLifted)
+                    .offset(y: WidgetLayout.stageMargin.height + CGFloat(tops[index]) + offset(of: index))
                     .zIndex(isLifted ? 1 : 0)
                     .animation(isLifted ? nil : .snappy(duration: 0.2), value: model.target)
             }
@@ -165,22 +174,23 @@ struct DragStageView: View {
     private func offset(of index: Int) -> CGFloat {
         guard let lifted = model.lifted, let target = model.target else { return 0 }
         if index == lifted { return model.translation }
-        return RowReorder.shift(row: index, from: lifted, to: target, rowHeight: WidgetLayout.rowPitch)
+        return RowReorder.shift(row: index, from: lifted, to: target, heights: model.heights, spacing: WidgetLayout.rowSpacing)
     }
 }
 
-/// One note's line as the widget draws it; lifted, it gets a card under it and a soft shadow.
+/// One note's row as the widget draws it; lifted, it gets a card under it and a soft shadow.
 private struct StageLine: View {
     let note: StickyNote
+    let lines: Int
     let isLifted: Bool
 
     var body: some View {
-        HStack(spacing: WidgetLayout.gap) {
+        HStack(alignment: .top, spacing: WidgetLayout.gap) {
             NoteCircleMark(note: note, ink: StickyPalette.ink)
-            NoteTextLabel(note: note, ink: StickyPalette.ink)
+            NoteTextLabel(note: note, lines: lines, ink: StickyPalette.ink)
             if note.isCrossedOut { NoteDeleteMark(ink: StickyPalette.ink) }
         }
-        .frame(height: WidgetLayout.rowHeight)
+        .frame(height: WidgetLayout.rowHeight(lines: lines))
         .padding(.horizontal, WidgetLayout.stageMargin.width)
         .background {
             RoundedRectangle(cornerRadius: 6)

@@ -112,32 +112,6 @@ final class StickyBoardTests: XCTestCase {
         XCTAssertEqual(board.editing(id, text: String(repeating: "z", count: 500)).notes[0].text.count, StickyBoard.maxTextLength)
     }
 
-    func test_visible_whenEverythingFits_showsAllNotes() {
-        let board = (0..<4).reduce(StickyBoard.empty) { b, i in b.adding("n\(i)", now: t0) }
-
-        let shown = board.visible(limit: 4)
-
-        XCTAssertEqual(shown.notes.map(\.text), ["n3", "n2", "n1", "n0"])
-        XCTAssertEqual(shown.hiddenCount, 0)
-    }
-
-    func test_visible_onOverflow_givesTheLastRowToTheHiddenCount() {
-        let board = (0..<6).reduce(StickyBoard.empty) { b, i in b.adding("n\(i)", now: t0) }
-
-        let shown = board.visible(limit: 4)
-
-        XCTAssertEqual(shown.notes.map(\.text), ["n5", "n4", "n3"])
-        XCTAssertEqual(shown.hiddenCount, 3)
-    }
-
-    func test_visible_withNoRows_hidesEverything() {
-        let board = StickyBoard.empty.adding("a", now: t0).adding("b", now: t0)
-
-        XCTAssertEqual(board.visible(limit: 0).notes, [])
-        XCTAssertEqual(board.visible(limit: -1).hiddenCount, 2)
-        XCTAssertEqual(board.visible(limit: 1).hiddenCount, 2)
-    }
-
     func test_moving_putsTheNoteInItsNewPlace_andLeavesTheOriginalUntouched() {
         let board = ["d", "c", "b", "a"].reduce(StickyBoard.empty) { $0.adding($1, now: t0) }
         let a = board.notes[0].id
