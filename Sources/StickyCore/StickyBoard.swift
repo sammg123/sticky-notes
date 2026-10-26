@@ -35,12 +35,15 @@ public struct StickyBoard: Codable, Equatable, Sendable {
         return StickyBoard(notes: [note] + notes)
     }
 
-    /// The note's circle: crosses an open note out, and brings a crossed-out note back.
+    /// The note's circle: crosses an open note out, and brings a crossed-out note back. Either way
+    /// the note lands just below the last open note, so a crossed-out note heads the crossed-out
+    /// ones and a note brought back ends the open ones. An unknown id changes nothing.
     public func toggling(_ id: UUID) -> StickyBoard {
-        StickyBoard(notes: notes.map { note in
-            guard note.id == id else { return note }
-            return StickyNote(id: note.id, text: note.text, isCrossedOut: !note.isCrossedOut, createdAt: note.createdAt)
-        })
+        guard let note = notes.first(where: { $0.id == id }) else { return self }
+        let flipped = StickyNote(id: note.id, text: note.text, isCrossedOut: !note.isCrossedOut, createdAt: note.createdAt)
+        let rest = notes.filter { $0.id != id }
+        let slot = rest.lastIndex(where: { !$0.isCrossedOut }).map { $0 + 1 } ?? 0
+        return StickyBoard(notes: Array(rest[..<slot]) + [flipped] + Array(rest[slot...]))
     }
 
     /// Replaces the note's text (trimmed and capped), keeping its place and crossed-out state.

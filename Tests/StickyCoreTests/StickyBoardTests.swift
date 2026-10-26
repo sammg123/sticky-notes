@@ -34,20 +34,68 @@ final class StickyBoardTests: XCTestCase {
         XCTAssertEqual(board.notes[0].text.count, StickyBoard.maxTextLength)
     }
 
-    func test_toggling_crossesTheNoteOut_inPlace() {
-        let board = StickyBoard.empty.adding("a", now: t0).adding("b", now: t0)
-        let target = board.notes[1]
+    private func board(_ spec: String) -> StickyBoard {
+        // "a b- c" = open a, crossed-out b, open c, top to bottom.
+        StickyBoard(notes: spec.split(separator: " ").map { word in
+            StickyNote(text: String(word.prefix { $0 != "-" }), isCrossedOut: word.hasSuffix("-"), createdAt: t0)
+        })
+    }
 
-        let next = board.toggling(target.id)
+    private func spec(_ board: StickyBoard) -> String {
+        board.notes.map { $0.text + ($0.isCrossedOut ? "-" : "") }.joined(separator: " ")
+    }
 
-        XCTAssertEqual(next.notes.map(\.text), ["b", "a"])
-        XCTAssertEqual(next.notes.map(\.isCrossedOut), [false, true])
-        XCTAssertFalse(board.notes[1].isCrossedOut)
+    private func id(_ text: String, in board: StickyBoard) -> UUID {
+        board.notes.first { $0.text == text }!.id
+    }
+
+    func test_crossingOut_movesTheNoteToTheTopOfTheCrossedOutNotes_andLeavesTheOriginalUntouched() {
+        // Arrange
+        let before = board("e d c b- a-")
+
+        // Act
+        let next = before.toggling(id("d", in: before))
+
+        // Assert
+        XCTAssertEqual(spec(next), "e c d- b- a-")
+        XCTAssertEqual(next.notes.first { $0.text == "d" }?.id, id("d", in: before))
+        XCTAssertEqual(spec(before), "e d c b- a-")
+    }
+
+    func test_crossingOut_withNothingCrossedOutYet_sendsTheNoteToTheBottom() {
+        let before = board("c b a")
+
+        XCTAssertEqual(spec(before.toggling(id("c", in: before))), "b a c-")
+        XCTAssertEqual(spec(before.toggling(id("a", in: before))), "c b a-")
+    }
+
+    func test_crossingOut_landsBelowTheLastOpenNote_evenIfACrossedOutNoteWasDraggedAboveIt() {
+        let before = board("x- b a")
+
+        XCTAssertEqual(spec(before.toggling(id("b", in: before))), "x- a b-")
+    }
+
+    func test_bringingANoteBack_putsItAtTheBottomOfTheOpenNotes() {
+        let before = board("b a- c-")
+
+        XCTAssertEqual(spec(before.toggling(id("c", in: before))), "b c a-")
+        let allCrossed = board("a- b-")
+        XCTAssertEqual(spec(allCrossed.toggling(id("b", in: allCrossed))), "b a-")
+    }
+
+    func test_crossingOutAndBack_endsAtTheBottomOfTheOpenNotes_andASingleNoteStaysPut() {
+        let before = board("a b c")
+        let a = id("a", in: before)
+        let single = board("a")
+
+        XCTAssertEqual(spec(before.toggling(a)), "b c a-")
+        XCTAssertEqual(spec(before.toggling(a).toggling(a)), "b c a")
+        XCTAssertEqual(spec(single.toggling(id("a", in: single))), "a-")
     }
 
     func test_togglingACrossedOutNote_uncrossesIt_andKeepsIt() {
         let board = StickyBoard.empty.adding("a", now: t0).adding("b", now: t0)
-        let target = board.notes[0]
+        let target = board.notes[1]
 
         let next = board.toggling(target.id).toggling(target.id)
 
